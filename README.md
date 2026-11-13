@@ -8,7 +8,7 @@ A shared logbook web app that looks and works like a green military logbook.
 - **Live.** New entries show up on everyone's screen right away (Server-Sent Events), with no refresh needed.
 - **Tamper-evident.** Every record is fingerprinted and chained to the one before it, and the chain is regularly signed with a key the database never sees. A **Verify** page (and the `caplog verify` command) recomputes everything and points to exactly where any change happened.
 - **Export / import.** PDF (a green-book printout) and JSON (every record and fingerprint, so it can be verified). Each export or import writes a permanent system entry recording it.
-- **Small.** One ~15 MB static binary with SQLite built in, in a distroless container. It idles at about 15 MB of RAM, so you can run several copies.
+- **Small.** One ~13 MB static binary with SQLite built in, in a distroless container. It idles at about 15 MB of RAM, so you can run several copies.
 
 ---
 
