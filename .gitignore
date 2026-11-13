@@ -1,0 +1,14 @@
+# Build output
+/caplog
+/dist/
+# Local data and keys - never commit these
+*.db
+*.db-wal
+*.db-shm
+*.key
+*.key.pub
+*.pem
+checkpoints*.jsonl
+/data/
+/secrets/
+.env
