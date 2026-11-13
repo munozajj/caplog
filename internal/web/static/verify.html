@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CapLog - Verify</title>
+<link rel="stylesheet" href="static/style.css">
+<script src="static/verify.js" defer></script>
+</head>
+<body>
+<div class="book">
+  <header class="cover cover-band">
+    <div class="plate plate-small"><span class="small">LOGBOOK</span><h1>Verify</h1></div>
+    <nav class="tools"><a href="./">Back to log</a><button type="button" id="rerun">Run again</button></nav>
+  </header>
+  <main class="page">
+    <p>This recomputes the fingerprint of every record, checks each link in the chain,
+       and compares the result with the signed checkpoints.</p>
+    <h2 id="result">Checking&hellip;</h2>
+    <div id="details"></div>
+  </main>
+</div>
+</body>
+</html>
