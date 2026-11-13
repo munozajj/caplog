@@ -50,6 +50,12 @@ checkpoint:
   every: 25          # checkpoint after this many new records
   interval: 10m      # and this often if anything changed
 
+# Comma-separated IPs or CIDRs of reverse proxies (for example the Ingress
+# controller). Empty (default) means CapLog records the connecting address
+# as-is, which is the proxy's IP if you use Ingress. Set this to record the
+# real client IP from X-Forwarded-For / X-Real-IP.
+trustedProxies: ""
+
 resources:
   requests:
     cpu: 10m

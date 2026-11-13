@@ -94,7 +94,13 @@ func serve(args []string) error {
 	every := fs.Int("checkpoint-every", envInt("CAPLOG_CHECKPOINT_EVERY", 25), "write a checkpoint after this many new records (CAPLOG_CHECKPOINT_EVERY)")
 	interval := fs.Duration("checkpoint-interval", envDur("CAPLOG_CHECKPOINT_INTERVAL", 10*time.Minute), "also write a checkpoint this often if anything changed (CAPLOG_CHECKPOINT_INTERVAL)")
 	maxImport := fs.Int("max-import-mb", envInt("CAPLOG_MAX_IMPORT_MB", 20), "largest import file accepted, in MB (CAPLOG_MAX_IMPORT_MB)")
+	trusted := fs.String("trusted-proxies", env("CAPLOG_TRUSTED_PROXIES", ""), "comma-separated IPs or CIDRs of reverse proxies; if the client is one of these, X-Forwarded-For / X-Real-IP is used (CAPLOG_TRUSTED_PROXIES)")
 	fs.Parse(args)
+
+	trustedNets, err := web.ParseTrustedProxies(*trusted)
+	if err != nil {
+		return err
+	}
 
 	store, err := logbook.Open(s.db)
 	if err != nil {
@@ -136,7 +142,7 @@ func serve(args []string) error {
 
 	srv := &http.Server{
 		Addr:              s.listen,
-		Handler:           web.New(store, web.Config{CheckpointPath: s.checkpoints, PublicKey: pub, MaxImportBytes: int64(*maxImport) << 20}),
+		Handler:           web.New(store, web.Config{CheckpointPath: s.checkpoints, PublicKey: pub, MaxImportBytes: int64(*maxImport) << 20, TrustedProxies: trustedNets}),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       2 * time.Minute, // generous, for large imports
 		IdleTimeout:       2 * time.Minute,

@@ -46,6 +46,10 @@ spec:
               value: {{ .Values.checkpoint.every | quote }}
             - name: CAPLOG_CHECKPOINT_INTERVAL
               value: {{ .Values.checkpoint.interval | quote }}
+            {{- if .Values.trustedProxies }}
+            - name: CAPLOG_TRUSTED_PROXIES
+              value: {{ .Values.trustedProxies | quote }}
+            {{- end }}
             - name: GOMEMLIMIT
               value: {{ .Values.goMemLimit | quote }}
             {{- if .Values.signingKey.existingSecret }}

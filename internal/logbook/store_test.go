@@ -37,7 +37,7 @@ func newStore(t *testing.T, title string) *Store {
 func addN(t *testing.T, s *Store, n int) {
 	t.Helper()
 	for i := 0; i < n; i++ {
-		if _, err := s.AddEntry(ctx, "Jane", "Doe", "entry text "+strings.Repeat("x", i)); err != nil {
+		if _, err := s.AddEntry(ctx, "Jane", "Doe", "entry text "+strings.Repeat("x", i), ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -94,7 +94,7 @@ func TestTriggersBlockUpdateAndDelete(t *testing.T) {
 		t.Fatal("DELETE of everything should be blocked")
 	}
 	// Inserting out of sequence is blocked too.
-	_, err := db.Exec(`INSERT INTO records VALUES (10, 'entry', 'x', 'a', 'b', 'c', '', 'bad', 'h1')`)
+	_, err := db.Exec(`INSERT INTO records VALUES (10, 'entry', 'x', 'a', 'b', '', 'c', '', 'bad', 'h1')`)
 	if err == nil || !strings.Contains(err.Error(), "next in sequence") {
 		t.Fatalf("out-of-sequence insert should be blocked, got %v", err)
 	}
@@ -201,22 +201,22 @@ func writeCheckpoint(t *testing.T, s *Store) (string, ed25519.PublicKey) {
 
 func TestTextLimitAndValidation(t *testing.T) {
 	s := newStore(t, "Log")
-	if _, err := s.AddEntry(ctx, "A", "B", strings.Repeat("a", 500)); err != nil {
+	if _, err := s.AddEntry(ctx, "A", "B", strings.Repeat("a", 500), ""); err != nil {
 		t.Fatalf("500 chars should be accepted: %v", err)
 	}
-	if _, err := s.AddEntry(ctx, "A", "B", strings.Repeat("a", 501)); !errors.Is(err, ErrInvalidInput) {
+	if _, err := s.AddEntry(ctx, "A", "B", strings.Repeat("a", 501), ""); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("501 chars should be rejected, got %v", err)
 	}
 	// Limit is in characters, not bytes: 500 emoji are fine.
-	if _, err := s.AddEntry(ctx, "A", "B", strings.Repeat("😀", 500)); err != nil {
+	if _, err := s.AddEntry(ctx, "A", "B", strings.Repeat("😀", 500), ""); err != nil {
 		t.Fatalf("500 emoji should be accepted: %v", err)
 	}
 	// Windows line endings count as one character.
-	if _, err := s.AddEntry(ctx, "A", "B", strings.Repeat("a\r\n", 250)); err != nil {
+	if _, err := s.AddEntry(ctx, "A", "B", strings.Repeat("a\r\n", 250), ""); err != nil {
 		t.Fatalf("CRLF should be normalised: %v", err)
 	}
 	for _, c := range [][3]string{{"", "B", "x"}, {"A", " ", "x"}, {"A", "B", "   "}, {"A\nB", "C", "x"}} {
-		if _, err := s.AddEntry(ctx, c[0], c[1], c[2]); !errors.Is(err, ErrInvalidInput) {
+		if _, err := s.AddEntry(ctx, c[0], c[1], c[2], ""); !errors.Is(err, ErrInvalidInput) {
 			t.Fatalf("%q should be rejected, got %v", c, err)
 		}
 	}
@@ -228,7 +228,7 @@ func TestTextLimitAndValidation(t *testing.T) {
 
 func TestEntryBeforeSetupRejected(t *testing.T) {
 	s := newStore(t, "")
-	if _, err := s.AddEntry(ctx, "A", "B", "x"); !errors.Is(err, ErrNoTitle) {
+	if _, err := s.AddEntry(ctx, "A", "B", "x", ""); !errors.Is(err, ErrNoTitle) {
 		t.Fatalf("want ErrNoTitle, got %v", err)
 	}
 }
@@ -243,7 +243,7 @@ func TestConcurrentPostingIsGapless(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := 0; i < each; i++ {
-				if _, err := s.AddEntry(ctx, "Pvt", "Ryan", "concurrent"); err != nil {
+				if _, err := s.AddEntry(ctx, "Pvt", "Ryan", "concurrent", ""); err != nil {
 					errs <- err
 				}
 			}
@@ -276,7 +276,7 @@ func TestTitleCannotBeChanged(t *testing.T) {
 	if _, err := s.DB().Exec(`UPDATE records SET body = 'New Title' WHERE seq = 0`); err == nil {
 		t.Fatal("title UPDATE should be blocked")
 	}
-	if _, err := s.DB().Exec(`INSERT INTO records VALUES (1, 'genesis', 'x', '', '', 'Another', '', ?, 'h')`, all(t, s)[0].Hash); err == nil {
+	if _, err := s.DB().Exec(`INSERT INTO records VALUES (1, 'genesis', 'x', '', '', '', 'Another', '', ?, 'h')`, all(t, s)[0].Hash); err == nil {
 		t.Fatal("a second genesis record should be blocked")
 	}
 	if title, _ := s.Title(ctx); title != "Original Title" {
@@ -325,13 +325,13 @@ func TestExportWritesSystemEntry(t *testing.T) {
 
 func TestExportImportRoundTrip(t *testing.T) {
 	a := newStore(t, "Bravo Log")
-	a.AddEntry(ctx, "John", "Smith", "first line\nsecond line")
-	a.AddEntry(ctx, "Ana", "García", "ünïcödé ✓")
+	a.AddEntry(ctx, "John", "Smith", "first line\nsecond line", "203.0.113.10")
+	a.AddEntry(ctx, "Ana", "García", "ünïcödé ✓", "2001:db8::1")
 	data := exportJSON(t, a)
 	src, _ := ParseExport(data)
 
 	b := newStore(t, "Charlie Log")
-	b.AddEntry(ctx, "Local", "Person", "already here")
+	b.AddEntry(ctx, "Local", "Person", "already here", "192.0.2.1")
 	before := all(t, b)
 
 	res, err := b.Import(ctx, data)
@@ -362,7 +362,7 @@ func TestExportImportRoundTrip(t *testing.T) {
 		got, orig := after[3+i], src.Records[1+i]
 		var m ImportedMeta
 		json.Unmarshal([]byte(got.Meta), &m)
-		if got.Kind != KindImported || got.FirstName != orig.FirstName || got.LastName != orig.LastName || got.Body != orig.Body ||
+		if got.Kind != KindImported || got.FirstName != orig.FirstName || got.LastName != orig.LastName || got.IP != orig.IP || got.Body != orig.Body ||
 			m.SourceSeq != orig.Seq || m.SourceCreatedAt != orig.CreatedAt || m.SourceTitle != "Bravo Log" || m.SourceHash != orig.Hash || m.SourceKind != orig.Kind {
 			t.Fatalf("imported record %d wrong: %+v meta %+v (orig %+v)", i, got, m, orig)
 		}
@@ -403,5 +403,37 @@ func TestImportRejectsBrokenChain(t *testing.T) {
 	}
 	if h, _ := b.Head(ctx); h != headBefore {
 		t.Fatal("a rejected import must not write anything")
+	}
+}
+
+func TestEntryIPIsStoredAndInHash(t *testing.T) {
+	s := newStore(t, "Log")
+	rec, err := s.AddEntry(ctx, "Jane", "Doe", "posted", "203.0.113.50")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.IP != "203.0.113.50" {
+		t.Fatalf("stored ip %q", rec.IP)
+	}
+	if ComputeHash(rec) != rec.Hash {
+		t.Fatal("hash should include the stored ip")
+	}
+	// Changing the ip without recomputing the hash is detected.
+	tampered := rec
+	tampered.IP = "192.0.2.1"
+	if ComputeHash(tampered) == rec.Hash {
+		t.Fatal("hash should change when ip changes")
+	}
+	// Title / export system records leave ip empty.
+	recs := all(t, s)
+	if recs[0].Kind != KindGenesis || recs[0].IP != "" {
+		t.Fatalf("title record should have empty ip: %+v", recs[0])
+	}
+	if _, err := s.RecordExport(ctx, "json"); err != nil {
+		t.Fatal(err)
+	}
+	h, _ := s.Head(ctx)
+	if h.Kind != KindExport || h.IP != "" {
+		t.Fatalf("export note should have empty ip: %+v", h)
 	}
 }

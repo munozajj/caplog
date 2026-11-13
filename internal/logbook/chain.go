@@ -34,6 +34,7 @@ type Record struct {
 	CreatedAt string `json:"created_at"` // UTC, RFC 3339 with nanoseconds
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
+	IP        string `json:"ip"`        // address of the device that added this record; empty for system notes
 	Body      string `json:"body"`      // entry text, or the title for record #0
 	Meta      string `json:"meta"`      // extra JSON for system/imported records, else ""
 	PrevHash  string `json:"prev_hash"` // fingerprint of the record before this one
@@ -56,6 +57,7 @@ func ComputeHash(r Record) string {
 		r.CreatedAt,
 		r.FirstName,
 		r.LastName,
+		r.IP,
 		r.Body,
 		r.Meta,
 		r.PrevHash,

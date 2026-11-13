@@ -3,7 +3,7 @@
 A shared logbook web app that looks and works like a green military logbook.
 
 - **One logbook per deployment.** The title is typed in once, on first start, and can never be changed.
-- **Anyone with the address can post.** No accounts, no logins. Each entry has a first name, last name and up to 500 characters of text. CapLog adds the entry number and time itself.
+- **Anyone with the address can post.** No accounts, no logins. Each entry has a first name, last name and up to 500 characters of text. CapLog adds the entry number, time and the poster's IP address itself.
 - **Permanent.** Entries can never be edited, hidden or deleted, not even by an admin. Before an entry is saved, a second confirmation warns that it's permanent.
 - **Live.** New entries show up on everyone's screen right away (Server-Sent Events), with no refresh needed.
 - **Tamper-evident.** Every record is fingerprinted and chained to the one before it, and the chain is regularly signed with a key the database never sees. A **Verify** page (and the `caplog verify` command) recomputes everything and points to exactly where any change happened.
@@ -95,7 +95,7 @@ location / {
 - **Post:** fill in first name, last name and the entry, then press **Enter** (or Submit). Shift+Enter adds a new line. A confirmation dialog shows the entry and warns that it's permanent. It's only saved when you confirm.
 - **Times** are stored in UTC and shown in each viewer's local time. Hover over a time to see the UTC value.
 - **Export JSON / Export PDF:** downloads the whole log. A permanent system entry such as *"Logbook exported as PDF (records #0-#42)"* is added first, and it's included in the export.
-- **Import:** choose a CapLog JSON export, from this logbook or another one. CapLog checks the file's whole hash chain first and rejects it if anything in it was changed. Valid records are added **to the end** of this log with new entry numbers, marked **IMPORTED**, and they keep their original entry number, time, names, text and source logbook title. An "Import started" and an "Import finished" system entry are written around them. Nothing already in the log is touched.
+- **Import:** choose a CapLog JSON export, from this logbook or another one. CapLog checks the file's whole hash chain first and rejects it if anything in it was changed. Valid records are added **to the end** of this log with new entry numbers, marked **IMPORTED**, and they keep their original entry number, time, names, IP address, text and source logbook title. An "Import started" and an "Import finished" system entry are written around them. Nothing already in the log is touched.
 - **Verify:** the Verify link (`/verify`) checks the whole log and the signed checkpoints and reports OK, or exactly where it breaks.
 
 ## Signing key
@@ -133,7 +133,7 @@ Several layers, each covering a different kind of attack:
 
 1. **No delete or edit feature.** The app's code only ever adds records. There is no code path that updates or deletes.
 2. **Database triggers.** The SQLite database itself refuses any `UPDATE` or `DELETE` on the records table, even from the `sqlite3` command line, and refuses inserts that don't continue the chain properly.
-3. **Hash chain.** Each record stores a SHA-256 fingerprint of its entry number, type, time, names, text, import details and **the previous record's fingerprint**. Record #0 holds the title. Changing any record breaks its own fingerprint and the link from the next record, and Verify reports the exact record.
+3. **Hash chain.** Each record stores a SHA-256 fingerprint of its entry number, type, time, names, IP address, text, import details and **the previous record's fingerprint**. Record #0 holds the title. Changing any record breaks its own fingerprint and the link from the next record, and Verify reports the exact record.
 4. **Signed checkpoints.** Someone could drop the triggers, edit a record, and recalculate every fingerprint after it so the chain looks consistent again. But the signed checkpoints still record the *old* fingerprints, and new matching ones can't be made without the private key. Checkpoints also catch records being deleted off the end (a rolled-back database).
 5. **Locked-down container.** It's a distroless image with no shell or package manager, runs as non-root with a read-only root filesystem and no Linux capabilities, and the only writable places are the two volumes.
 
@@ -141,9 +141,10 @@ Several layers, each covering a different kind of attack:
 
 ## Privacy
 
-- No IP addresses, user agents or cookies are stored or logged anywhere. There is no request log. The app only logs startup, checkpoints, imports and errors, never any client details.
+- The IP address of the device that adds an entry is stored on that entry and is permanent (it is part of the hash chain). Title, export and import system notes leave the IP empty. Imported records keep their original IP, if the file had one.
+- By default CapLog records the connecting address. If you run it behind a reverse proxy or Ingress, that will be the proxy's IP unless you set `CAPLOG_TRUSTED_PROXIES` to that proxy's IP or CIDR, in which case CapLog will use `X-Forwarded-For` or `X-Real-IP`. Leave this unset unless you trust the proxy; otherwise a client could spoof those headers.
+- User agents and cookies are not stored. There is no request log. The app only logs startup, checkpoints, imports and errors, never any client details.
 - Names are whatever people type in. They're part of the permanent record.
-- Export and import system entries contain no names or IPs.
 
 ## Settings
 
@@ -159,6 +160,7 @@ Every setting can be given as an environment variable or a flag (`caplog serve -
 | `CAPLOG_CHECKPOINT_EVERY` | `25` | Checkpoint after this many new records |
 | `CAPLOG_CHECKPOINT_INTERVAL` | `10m` | Also checkpoint this often if anything changed |
 | `CAPLOG_MAX_IMPORT_MB` | `20` | Largest import file accepted |
+| `CAPLOG_TRUSTED_PROXIES` | *(none)* | Comma-separated IPs or CIDRs of reverse proxies. If the connecting address is in this list, the client IP is taken from `X-Forwarded-For` or `X-Real-IP`. Default is off. |
 
 ## Backups
 
@@ -202,10 +204,10 @@ To stay well inside the GitHub Pro allowance, runs are cancelled when you push a
   "format": "caplog-export", "version": 1,
   "title": "…", "exported_at": "2026-01-01T00:00:00Z",
   "records": [
-    {"seq": 0, "kind": "genesis", "created_at": "…", "first_name": "", "last_name": "",
+    {"seq": 0, "kind": "genesis", "created_at": "…", "first_name": "", "last_name": "", "ip": "",
      "body": "<title>", "meta": "", "prev_hash": "000…0", "hash": "…"}
   ]
 }
 ```
 
-`kind` is one of `genesis`, `entry`, `export`, `import` or `imported`. Here is how `hash` is calculated, so anyone can re-check it with their own tools. It's the SHA-256 (in hex) of the text `caplog-v1\n` followed by each of these fields in order: `seq`, `kind`, `created_at`, `first_name`, `last_name`, `body`, `meta`, `prev_hash`. Each field is written as `<byte length>:<value>\n`.
+`kind` is one of `genesis`, `entry`, `export`, `import` or `imported`. Here is how `hash` is calculated, so anyone can re-check it with their own tools. It's the SHA-256 (in hex) of the text `caplog-v1\n` followed by each of these fields in order: `seq`, `kind`, `created_at`, `first_name`, `last_name`, `ip`, `body`, `meta`, `prev_hash`. Each field is written as `<byte length>:<value>\n`.

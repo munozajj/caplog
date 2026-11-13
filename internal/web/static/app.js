@@ -79,10 +79,12 @@ function render(r) {
       break;
     case "entry":
       head.append(r.last_name + ", " + r.first_name);
+      if (r.ip) head.append(" ", el("span", "ip", r.ip));
       div.append(head, el("p", "body", r.body));
       break;
     case "imported":
       head.append(r.first_name || r.last_name ? r.last_name + ", " + r.first_name : "SYSTEM (" + (meta && meta.source_kind) + ")");
+      if (r.ip) head.append(" ", el("span", "ip", r.ip));
       head.append(el("span", "tag", "IMPORTED"));
       div.append(head);
       if (meta) div.append(el("div", "meta", "from \u201c" + meta.source_title + "\u201d #" + meta.source_seq + ", " + localTime(meta.source_created_at)));
@@ -148,7 +150,7 @@ function setupEntryForm() {
     // Step 2: explicit confirmation that this is permanent.
     const ok = await confirmDialog(
       "Confirm permanent entry",
-      "Every entry is PERMANENT. Once saved it can never be deleted or modified by anyone. Save this entry as " + first + " " + last + "?",
+      "Every entry is PERMANENT. Once saved it can never be deleted or modified by anyone. Your IP address will be recorded on the entry. Save this entry as " + first + " " + last + "?",
       body);
     if (!ok) return;
 

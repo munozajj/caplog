@@ -20,6 +20,7 @@ const (
 	MaxTextChars  = 500
 	MaxNameChars  = 100
 	MaxTitleChars = 200
+	MaxIPChars    = 64
 )
 
 // schema creates the records table and the triggers that make it append-only.
@@ -35,6 +36,7 @@ CREATE TABLE IF NOT EXISTS records (
 	created_at TEXT NOT NULL,        -- UTC, RFC 3339
 	first_name TEXT NOT NULL,
 	last_name  TEXT NOT NULL,
+	ip         TEXT NOT NULL,
 	body       TEXT NOT NULL,
 	meta       TEXT NOT NULL,
 	prev_hash  TEXT NOT NULL,
@@ -137,6 +139,10 @@ func open(path string, create bool) (*Store, error) {
 			return nil, fmt.Errorf("creating schema: %w", err)
 		}
 	}
+	if err := checkIPColumn(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return &Store{db: db, now: time.Now}, nil
 }
 
@@ -227,10 +233,12 @@ func (s *Store) Setup(ctx context.Context, title string) (Record, error) {
 }
 
 // AddEntry validates and permanently appends a person's entry.
-func (s *Store) AddEntry(ctx context.Context, first, last, text string) (Record, error) {
+// ip is the address of the device that submitted it (may be empty).
+func (s *Store) AddEntry(ctx context.Context, first, last, text, ip string) (Record, error) {
 	first = strings.TrimSpace(first)
 	last = strings.TrimSpace(last)
 	text = strings.TrimSpace(normalizeNewlines(text))
+	ip = strings.TrimSpace(ip)
 	switch {
 	case first == "" || last == "":
 		return Record{}, &ValidationError{"first name and last name are both required"}
@@ -242,10 +250,14 @@ func (s *Store) AddEntry(ctx context.Context, first, last, text string) (Record,
 		return Record{}, &ValidationError{"the entry text is required"}
 	case utf8.RuneCountInString(text) > MaxTextChars:
 		return Record{}, &ValidationError{fmt.Sprintf("the entry text can be at most %d characters", MaxTextChars)}
-	case !utf8.ValidString(first + last + text):
+	case strings.ContainsAny(ip, "\r\n"):
+		return Record{}, &ValidationError{"ip must be on one line"}
+	case utf8.RuneCountInString(ip) > MaxIPChars:
+		return Record{}, &ValidationError{fmt.Sprintf("ip can be at most %d characters", MaxIPChars)}
+	case !utf8.ValidString(first + last + text + ip):
 		return Record{}, &ValidationError{"text must be valid UTF-8"}
 	}
-	recs, err := s.appendRecords(ctx, false, []Record{{Kind: KindEntry, FirstName: first, LastName: last, Body: text}})
+	recs, err := s.appendRecords(ctx, false, []Record{{Kind: KindEntry, FirstName: first, LastName: last, Body: text, IP: ip}})
 	if err != nil {
 		return Record{}, err
 	}
@@ -304,9 +316,9 @@ func (s *Store) appendWith(ctx context.Context, genesis bool, build func(head Re
 		r.PrevHash = prev
 		r.Hash = ComputeHash(r)
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO records (seq, kind, created_at, first_name, last_name, body, meta, prev_hash, hash)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			r.Seq, r.Kind, r.CreatedAt, r.FirstName, r.LastName, r.Body, r.Meta, r.PrevHash, r.Hash); err != nil {
+			`INSERT INTO records (seq, kind, created_at, first_name, last_name, ip, body, meta, prev_hash, hash)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			r.Seq, r.Kind, r.CreatedAt, r.FirstName, r.LastName, r.IP, r.Body, r.Meta, r.PrevHash, r.Hash); err != nil {
 			return nil, fmt.Errorf("saving record %d: %w", r.Seq, err)
 		}
 		prev = r.Hash
@@ -321,14 +333,27 @@ func (s *Store) appendWith(ctx context.Context, genesis bool, build func(head Re
 	return out, nil
 }
 
-const cols = `seq, kind, created_at, first_name, last_name, body, meta, prev_hash, hash`
+const cols = `seq, kind, created_at, first_name, last_name, ip, body, meta, prev_hash, hash`
 
 type scanner interface{ Scan(dest ...any) error }
 
 func scan(row scanner) (Record, error) {
 	var r Record
-	err := row.Scan(&r.Seq, &r.Kind, &r.CreatedAt, &r.FirstName, &r.LastName, &r.Body, &r.Meta, &r.PrevHash, &r.Hash)
+	err := row.Scan(&r.Seq, &r.Kind, &r.CreatedAt, &r.FirstName, &r.LastName, &r.IP, &r.Body, &r.Meta, &r.PrevHash, &r.Hash)
 	return r, err
+}
+
+// checkIPColumn rejects databases created before the ip column existed.
+// Auto-adding the column would break existing fingerprints (the hash now includes ip).
+func checkIPColumn(db *sql.DB) error {
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('records') WHERE name = 'ip'`).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("this database was created before CapLog stored IP addresses; start a new database (the record format changed before release)")
+	}
+	return nil
 }
 
 func (s *Store) query(ctx context.Context, q string, args ...any) ([]Record, error) {

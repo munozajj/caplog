@@ -123,6 +123,9 @@ func Write(w io.Writer, title string, exportRec logbook.Record, each Each) error
 			newPage()
 		}
 		head := fmt.Sprintf("#%04d  %s", r.Seq, fmtTime(r.CreatedAt))
+		if r.IP != "" {
+			head += "  " + r.IP
+		}
 		switch r.Kind {
 		case logbook.KindGenesis:
 			writeLines("B", 10, head+"  LOGBOOK OPENED", 0)

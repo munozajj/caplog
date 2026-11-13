@@ -1,8 +1,9 @@
 // Package web is CapLog's HTTP server: the embedded web page, the JSON API,
 // live updates (Server-Sent Events), exports, imports and the verify page.
 //
-// Privacy: nothing here logs or stores IP addresses, user agents or cookies.
-// There is no request log at all; only errors are logged, without client info.
+// Privacy: each posted entry stores the poster's IP address (see clientIP).
+// User agents and cookies are not stored. There is no request log; only
+// errors are logged, without client info.
 package web
 
 import (
@@ -16,6 +17,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -33,6 +35,7 @@ type Config struct {
 	CheckpointPath string            // where signed checkpoints are written
 	PublicKey      ed25519.PublicKey // nil if no signing key is configured
 	MaxImportBytes int64             // biggest import file accepted
+	TrustedProxies []*net.IPNet      // if the request's remote address is in this list, use X-Forwarded-For / X-Real-IP; empty (default) never trusts those headers
 }
 
 // Server serves CapLog over HTTP.
@@ -203,7 +206,7 @@ func (s *Server) addEntry(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	rec, err := s.store.AddEntry(r.Context(), in.FirstName, in.LastName, in.Text)
+	rec, err := s.store.AddEntry(r.Context(), in.FirstName, in.LastName, in.Text, clientIP(r, s.cfg.TrustedProxies))
 	if err != nil {
 		fail(w, err)
 		return
@@ -386,4 +389,69 @@ func (s *Server) verify(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
 	defer cancel()
 	writeJSON(w, http.StatusOK, s.store.Verify(ctx, s.cfg.CheckpointPath, s.cfg.PublicKey))
+}
+
+// ParseTrustedProxies parses a comma-separated list of IPs or CIDRs.
+// Empty tokens are ignored. A bare IP is treated as a single-address prefix.
+func ParseTrustedProxies(s string) ([]*net.IPNet, error) {
+	var out []*net.IPNet
+	for _, p := range strings.Split(s, ",") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if !strings.Contains(p, "/") {
+			ip := net.ParseIP(p)
+			if ip == nil {
+				return nil, fmt.Errorf("trusted proxy %q is not a valid IP or CIDR", p)
+			}
+			bits := 128
+			if ip.To4() != nil {
+				bits = 32
+			}
+			p = ip.String() + "/" + strconv.Itoa(bits)
+		}
+		_, n, err := net.ParseCIDR(p)
+		if err != nil {
+			return nil, fmt.Errorf("trusted proxy %q: %w", p, err)
+		}
+		out = append(out, n)
+	}
+	return out, nil
+}
+
+// clientIP returns the address of the device that made the request.
+// By default this is the connection's remote address (port stripped).
+// X-Forwarded-For and X-Real-IP are used only when that remote address
+// is in trusted (opt-in; empty means those headers are ignored).
+func clientIP(r *http.Request, trusted []*net.IPNet) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if !ipInNets(host, trusted) {
+		return host
+	}
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if first, _, _ := strings.Cut(xff, ","); strings.TrimSpace(first) != "" {
+			return strings.TrimSpace(first)
+		}
+	}
+	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
+		return xri
+	}
+	return host
+}
+
+func ipInNets(host string, nets []*net.IPNet) bool {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, n := range nets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }

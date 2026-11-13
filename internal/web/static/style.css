@@ -45,6 +45,7 @@ section.cover { min-height: 100vh; display: flex; align-items: center; justify-c
 .entry .head { font-weight: bold; }
 .entry .num { display: inline-block; min-width: 4.5ch; }
 .entry .when { font-weight: normal; color: #445; }
+.entry .ip { font-weight: normal; color: #445; }
 .entry .body { white-space: pre-wrap; word-break: break-word; margin: 0; padding-left: 1ch; }
 .entry.system .body, .entry .meta { font-style: italic; color: #4a5a4a; }
 .entry .meta { padding-left: 1ch; font-size: .85rem; line-height: var(--line); }

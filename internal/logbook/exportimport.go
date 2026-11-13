@@ -137,9 +137,10 @@ func ParseExport(data []byte) (*ExportFile, error) {
 		return nil, &ValidationError{"the title in the file does not match its title record"}
 	}
 	for _, r := range f.Records {
-		if !utf8.ValidString(r.FirstName+r.LastName+r.Body+r.Meta) ||
+		if !utf8.ValidString(r.FirstName+r.LastName+r.IP+r.Body+r.Meta) ||
 			utf8.RuneCountInString(r.FirstName) > MaxNameChars ||
 			utf8.RuneCountInString(r.LastName) > MaxNameChars ||
+			utf8.RuneCountInString(r.IP) > MaxIPChars ||
 			utf8.RuneCountInString(r.Body) > 2000 || len(r.Meta) > 64*1024 {
 			return nil, &ValidationError{fmt.Sprintf("record #%d has fields that are too long or not valid text", r.Seq)}
 		}
@@ -190,6 +191,7 @@ func (s *Store) Import(ctx context.Context, data []byte) (ImportResult, error) {
 			Kind:      KindImported,
 			FirstName: r.FirstName,
 			LastName:  r.LastName,
+			IP:        r.IP,
 			Body:      r.Body,
 			Meta: mustJSON(ImportedMeta{
 				SourceTitle:     f.Title,
