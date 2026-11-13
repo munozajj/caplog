@@ -6,7 +6,7 @@
   --rule: #b0ccb0;       /* ruled lines */
   --margin: #c85a5a;     /* red margin line */
   --ink: #1e281e;
-  --line: 1.6rem;        /* height of one ruled line */
+  --line: 26px;          /* height of one ruled line (whole pixels keep lines crisp) */
   font-family: "Courier New", Courier, ui-monospace, monospace;
 }
 * { box-sizing: border-box; }
@@ -47,7 +47,7 @@ section.cover { min-height: 100vh; display: flex; align-items: center; justify-c
 .entry .when { font-weight: normal; color: #445; }
 .entry .body { white-space: pre-wrap; word-break: break-word; margin: 0; padding-left: 1ch; }
 .entry.system .body, .entry .meta { font-style: italic; color: #4a5a4a; }
-.entry .meta { padding-left: 1ch; font-size: .85rem; }
+.entry .meta { padding-left: 1ch; font-size: .85rem; line-height: var(--line); }
 .tag { font-size: .7rem; border: 1px solid currentColor; padding: 0 .3em; margin-left: .4em; vertical-align: middle; }
 
 /* Entry form */
@@ -81,4 +81,6 @@ dialog pre { white-space: pre-wrap; word-break: break-word; background: #fff; pa
           linear-gradient(90deg, transparent 1.9rem, var(--margin) 1.9rem, var(--margin) calc(1.9rem + 2px), transparent calc(1.9rem + 2px)),
           repeating-linear-gradient(transparent 0, transparent calc(var(--line) - 1px), var(--rule) calc(var(--line) - 1px), var(--rule) var(--line)); }
   .cover { border-left-width: 8px; }
+  /* On small screens let the header and form scroll with the page so entries get the room. */
+  .cover-band, .entry-form { position: static; }
 }

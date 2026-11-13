@@ -144,7 +144,7 @@ func Write(w io.Writer, title string, exportRec logbook.Record, each Each) error
 			writeLines("B", 10, head+"  SYSTEM: "+strings.ToUpper(r.Kind), 0)
 			writeLines("I", 9, r.Body, 4)
 		}
-		y += lineH / 2 // small gap between records
+		y += lineH // blank ruled line between records (keeps text on the lines)
 		return nil
 	})
 	if err != nil {
