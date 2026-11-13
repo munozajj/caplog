@@ -1,9 +1,10 @@
 # CapLog with Docker Compose.
 #
 # First time:
+#   docker compose build
 #   mkdir -p secrets
-#   docker compose run --rm --no-deps -v "$PWD/secrets:/out" --user "$(id -u):$(id -g)" \
-#     --entrypoint /caplog caplog keygen -out /out/caplog_signing.key
+#   docker run --rm -v "$PWD/secrets:/out" --user "$(id -u):$(id -g)" caplog:local \
+#     keygen -out /out/caplog_signing.key
 #   chmod 0444 secrets/caplog_signing.key   # container user (uid 65532) must be able to read it
 #   docker compose up -d
 #
