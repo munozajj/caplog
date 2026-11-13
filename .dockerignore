@@ -1,0 +1,11 @@
+.git
+.github
+deploy
+secrets
+*.db*
+*.key
+*.key.pub
+*.pem
+*.jsonl
+*.md
+docker-compose.yml

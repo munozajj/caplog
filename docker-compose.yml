@@ -1,0 +1,64 @@
+# CapLog with Docker Compose.
+#
+# First time:
+#   mkdir -p secrets
+#   docker compose run --rm --no-deps -v "$PWD/secrets:/out" --user "$(id -u):$(id -g)" \
+#     --entrypoint /caplog caplog keygen -out /out/caplog_signing.key
+#   chmod 0444 secrets/caplog_signing.key   # container user (uid 65532) must be able to read it
+#   docker compose up -d
+#
+# Settings you can override in a .env file next to this one:
+#   CAPLOG_PORT=8080            port on the host
+#   CAPLOG_BIND=0.0.0.0         host address to listen on (127.0.0.1 = this host only)
+#   CAPLOG_IMAGE=...            image to run (default: build from this folder)
+#   CAPLOG_SIGNING_KEY_FILE=... path to the private signing key
+
+name: caplog
+
+services:
+  caplog:
+    image: ${CAPLOG_IMAGE:-caplog:local}
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${CAPLOG_BIND:-0.0.0.0}:${CAPLOG_PORT:-8080}:8080"
+    environment:
+      CAPLOG_SIGNING_KEY: /run/secrets/caplog_signing_key
+      GOMEMLIMIT: 80MiB          # Go keeps its memory under this (below mem_limit)
+    secrets:
+      - caplog_signing_key
+    volumes:
+      - caplog-data:/data               # the logbook database
+      - caplog-checkpoints:/checkpoints # signed checkpoints, kept apart from the database
+
+    # ---- hardening ----
+    user: "65532:65532"   # non-root
+    read_only: true       # root filesystem is read-only; only the volumes are writable
+    cap_drop: [ALL]       # no Linux capabilities needed
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+
+    # ---- small footprint (idle use is ~15 MB of RAM) ----
+    mem_limit: 96m
+    cpus: 0.5
+
+    healthcheck:
+      test: ["CMD", "/caplog", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "1m"
+        max-file: "3"
+
+secrets:
+  caplog_signing_key:
+    file: ${CAPLOG_SIGNING_KEY_FILE:-./secrets/caplog_signing.key}
+
+volumes:
+  caplog-data:
+  caplog-checkpoints:
