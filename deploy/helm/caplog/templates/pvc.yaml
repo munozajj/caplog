@@ -1,0 +1,22 @@
+{{- range $name := list "data" "checkpoints" }}
+{{- $p := index $.Values.persistence $name }}
+{{- if not $p.existingClaim }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "caplog.fullname" $ }}-{{ $name }}
+  labels: {{- include "caplog.labels" $ | nindent 4 }}
+  annotations:
+    # Keep the logbook if the chart is uninstalled.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if $p.storageClass }}
+  storageClassName: {{ $p.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $p.size }}
+{{- end }}
+{{- end }}

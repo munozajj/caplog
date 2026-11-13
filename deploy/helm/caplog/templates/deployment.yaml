@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "caplog.fullname" . }}
+  labels: {{- include "caplog.labels" . | nindent 4 }}
+spec:
+  # Always exactly one pod: SQLite allows only one writer, and the
+  # gap-free entry numbering depends on it. Do not scale this up.
+  replicas: 1
+  strategy:
+    type: Recreate   # stop the old pod before starting the new one
+  selector:
+    matchLabels: {{- include "caplog.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "caplog.selectorLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532          # makes the volumes writable by the app user
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: caplog
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve"]
+          env:
+            - name: CAPLOG_LISTEN
+              value: ":8080"
+            - name: CAPLOG_DB
+              value: /data/caplog.db
+            - name: CAPLOG_CHECKPOINTS
+              value: /checkpoints/checkpoints.jsonl
+            - name: CAPLOG_CHECKPOINT_EVERY
+              value: {{ .Values.checkpoint.every | quote }}
+            - name: CAPLOG_CHECKPOINT_INTERVAL
+              value: {{ .Values.checkpoint.interval | quote }}
+            - name: GOMEMLIMIT
+              value: {{ .Values.goMemLimit | quote }}
+            {{- if .Values.signingKey.existingSecret }}
+            - name: CAPLOG_SIGNING_KEY
+              value: /run/secrets/caplog/{{ .Values.signingKey.key }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: checkpoints
+              mountPath: /checkpoints
+            {{- if .Values.signingKey.existingSecret }}
+            - name: signing-key
+              mountPath: /run/secrets/caplog
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.data.existingClaim | default (printf "%s-data" (include "caplog.fullname" .)) }}
+        - name: checkpoints
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.checkpoints.existingClaim | default (printf "%s-checkpoints" (include "caplog.fullname" .)) }}
+        {{- if .Values.signingKey.existingSecret }}
+        - name: signing-key
+          secret:
+            secretName: {{ .Values.signingKey.existingSecret }}
+            defaultMode: 0440   # readable by the app's group (fsGroup) only
+            items:
+              - key: {{ .Values.signingKey.key }}
+                path: {{ .Values.signingKey.key }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}

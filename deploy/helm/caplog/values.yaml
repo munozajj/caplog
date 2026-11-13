@@ -1,0 +1,77 @@
+# CapLog Helm values. Everything here has a safe default.
+
+image:
+  repository: ghcr.io/munozajj/caplog
+  tag: ""            # defaults to the chart's appVersion
+  pullPolicy: IfNotPresent
+
+# Private registry (ghcr.io is private for a private repo): name of a
+# docker-registry Secret in the same namespace, e.g. "ghcr-pull".
+imagePullSecrets: []
+
+# Signing key for tamper-evident checkpoints. Create the Secret yourself
+# (never put the key in this file), e.g.:
+#   kubectl create secret generic caplog-signing-key --from-file=signing.key=./caplog_signing.key
+# Leave existingSecret empty to run without signed checkpoints (not recommended).
+signingKey:
+  existingSecret: ""
+  key: signing.key
+
+service:
+  type: ClusterIP
+  port: 80
+
+# Optional Ingress so CapLog is reachable by a hostname (FQDN).
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # nginx: SSE streams must not be buffered
+    # nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    # nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+  host: caplog.example.lan
+  tls: []
+  #  - secretName: caplog-tls
+  #    hosts: [caplog.example.lan]
+
+persistence:
+  # The SQLite database. ReadWriteOnce is fine: only one pod ever runs.
+  data:
+    size: 1Gi
+    storageClass: ""
+    existingClaim: ""
+  # Signed checkpoints, on their own volume so they live apart from the database.
+  checkpoints:
+    size: 64Mi
+    storageClass: ""
+    existingClaim: ""
+
+checkpoint:
+  every: 25          # checkpoint after this many new records
+  interval: 10m      # and this often if anything changed
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 24Mi
+  limits:
+    cpu: 500m
+    memory: 96Mi
+
+# Soft memory target for the Go runtime; keep it a little below limits.memory.
+goMemLimit: 80MiB
+
+networkPolicy:
+  enabled: true
+  # Who may connect to the app port. Empty = any pod or address (the Ingress
+  # controller, NodePort/LoadBalancer traffic, etc.). Example to allow only
+  # an ingress-nginx namespace:
+  #   - namespaceSelector:
+  #       matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
+  from: []
+  # CapLog never makes outbound connections, so block them all.
+  denyEgress: true
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

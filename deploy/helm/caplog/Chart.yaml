@@ -1,0 +1,6 @@
+apiVersion: v2
+name: caplog
+description: CapLog - a permanent, shared, green-book style logbook (single Go binary + SQLite)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
