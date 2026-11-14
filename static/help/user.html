@@ -1,0 +1,17 @@
+<h2>CapLog</h2>
+<p>CapLog is a general-purpose shared logbook. People write what they just did. An entry cannot be edited or deleted. The list is the live record and the archive. It is not limited to one kind of work.</p>
+<p>One example: a network team making infrastructure changes keeps the log open. Each person writes what they just changed, so everyone sees it. When something breaks, the log shows who did what, in order, just before it broke.</p>
+<h2>How to post</h2>
+<p>A guest enters a first name and a last name, then the text. A signed-in account is not asked for a name; the name comes from the account. The entry shows Account and the username, or Guest. Adding an entry asks you to confirm that it is permanent.</p>
+<p>The example under the post box uses the same layout as a real entry. It is not stored. Its text is "The west door was locked and the lights were left on for the next person."</p>
+<p>The post box can sit at the top, bottom, left, right, or center so it does not cover the entries. That choice, and the choices for entry number, name, date and time, IP address, Account or Guest, and tags, change only what you see. They do not change the stored record. The admin sets the defaults and can turn off your ability to change them. A guest's choices stay in the browser. An account's choices stay on the account.</p>
+<h2>What an entry shows</h2>
+<p>The closed view shows the entry number, the date and time, the name, and the first line. Open it to see the full text, the IP address, the entry type, and the hash. Expand all and Collapse all apply to the list.</p>
+<p>Times are stored in UTC. You can show UTC or local time, and a 12-hour or 24-hour clock.</p>
+<h2>Permanence and verify</h2>
+<p>Nobody, including an admin, can edit, hide, or delete an entry. Each record stores a SHA-256 fingerprint of the record before it. Signed checkpoints are kept outside the database. The Verify page checks the chain and the signatures.</p>
+<h2>Export and import</h2>
+<p>Export PDF or Export JSON writes a permanent system entry and then downloads the file. Import checks a CapLog JSON file and appends the records. Nothing already in the log is changed.</p>
+<h2>Other controls</h2>
+<p>Search can filter by name, date range, text, and tag, and you can jump to an entry number. Tags are defined by the admin. A correction posts a new entry linked to an older one. Both entries show the link. The original is not changed. A pinned notice, when the admin sets one, stays at the top. The display page at /display is a large read-only view with no post box.</p>
+<p>If sign-in fails too many times, the account is locked for a while. Posts can also be limited per address and per account when the admin turns that on.</p>

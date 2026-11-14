@@ -1,21 +1,34 @@
 """HTTP server: the pages, the JSON API, and live updates."""
 
 import asyncio
+import json
 import logging
 import threading
+import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from caplog.errors import ErrNoTitle, ErrTitleIsSet, ValidationError
+from caplog.accounts import check_person_name, new_token
+from caplog.certs import describe, generate_self_signed, write_pair
+from caplog.errors import (
+    ErrDenied,
+    ErrLocked,
+    ErrNoTitle,
+    ErrRateLimited,
+    ErrTitleIsSet,
+    ValidationError,
+)
 from caplog.jsonutil import dumps
 from caplog.net import client_ip
+from caplog.ntpcheck import warning as clock_warning
 from caplog.pdfexport import write_pdf
-from caplog.store import MAX_NAME_CHARS, MAX_TEXT_CHARS, Store
+from caplog.prefs import DISPLAY_KEYS
+from caplog.store import Store
 
 log = logging.getLogger("caplog")
 _MAX_SUBSCRIBERS = 2000
@@ -37,6 +50,8 @@ class Config:
     max_import_bytes: int
     trusted: list
     static_path: Path
+    cert_dir: str = "/certs"
+    backup_dir: str = "/backups"
 
 
 class Hub:
@@ -106,11 +121,14 @@ def _error(message: str, status: int) -> Response:
 def lifespan(hub: Hub):
     @asynccontextmanager
     async def _lifespan(_app: FastAPI):
-        hub.loop = asyncio.get_running_loop()
+        loop = asyncio.get_running_loop()
+        if hub.loop is None or hub.loop.is_closed():
+            hub.loop = loop
         try:
             yield
         finally:
-            hub.loop = None
+            if hub.loop is loop:
+                hub.loop = None
 
     return _lifespan
 
@@ -120,6 +138,12 @@ def _fail(exc: Exception) -> Response:
         return _error(str(exc), 400)
     if isinstance(exc, (ErrTitleIsSet, ErrNoTitle)):
         return _error(str(exc), 409)
+    if isinstance(exc, ErrDenied):
+        return _error(str(exc), 403)
+    if isinstance(exc, ErrLocked):
+        return _error(str(exc), 429)
+    if isinstance(exc, ErrRateLimited):
+        return _error(str(exc), 429)
     log.exception("request failed")
     return _error("internal error", 500)
 
@@ -156,6 +180,79 @@ def _remote_host(request: Request) -> str:
     return request.client.host or ""
 
 
+def _secure(request: Request) -> bool:
+    return request.url.scheme == "https"
+
+
+def _csrf_cookie(response: Response, request: Request) -> str:
+    token = request.cookies.get("caplog_csrf") or new_token()
+    response.set_cookie(
+        "caplog_csrf",
+        token,
+        httponly=False,
+        samesite="lax",
+        secure=_secure(request),
+        path="/",
+        max_age=86400,
+    )
+    return token
+
+
+def _session_cookie(response: Response, request: Request, token: str) -> None:
+    response.set_cookie(
+        "caplog_session",
+        token,
+        httponly=True,
+        samesite="lax",
+        secure=_secure(request),
+        path="/",
+        max_age=12 * 3600,
+    )
+
+
+def _clear_session(response: Response, request: Request) -> None:
+    response.delete_cookie("caplog_session", path="/", samesite="lax", secure=_secure(request), httponly=True)
+
+
+def _ip(request: Request, config: Config) -> str:
+    return client_ip(
+        _remote_host(request),
+        request.headers.get("x-forwarded-for", ""),
+        request.headers.get("x-real-ip", ""),
+        config.trusted,
+    )
+
+
+def _public_user(user: dict | None) -> dict | None:
+    if user is None:
+        return None
+    return {
+        "username": user["username"],
+        "first_name": user["first_name"],
+        "last_name": user["last_name"],
+        "role": user["role"],
+        "is_master": user["is_master"],
+    }
+
+
+def _redirect_target(store: Store, request: Request) -> str | None:
+    """Send browsers to HTTPS when the admin turned that on. Health checks stay on HTTP."""
+    if request.url.path == "/healthz" or request.url.scheme == "https":
+        return None
+    try:
+        settings = store.settings()
+    except Exception:
+        return None
+    if settings.get("http_redirect") != "true" or settings.get("https_enabled") != "true":
+        return None
+    host = settings.get("site_fqdn") or request.url.hostname or "localhost"
+    port = settings.get("https_port") or "8443"
+    target = f"https://{host}:{port}{request.url.path}"
+    if request.url.query:
+        target += "?" + request.url.query
+    return target
+
+
 def create_app(store: Store, config: Config) -> FastAPI:
     hub = Hub()
     store.on_append(hub.publish)
@@ -166,9 +263,14 @@ def create_app(store: Store, config: Config) -> FastAPI:
 
     @app.middleware("http")
     async def guard_and_headers(request: Request, call_next):
-        if request.method == "POST" and request.url.path.startswith("/api/"):
+        target = _redirect_target(store, request)
+        if target is not None:
+            response = RedirectResponse(target, status_code=307)
+        elif request.method == "POST" and request.url.path.startswith("/api/"):
             if request.headers.get("x-caplog") != "1":
                 response = _error("missing X-CapLog: 1 header", 403)
+            elif request.cookies.get("caplog_csrf", "") == "" or request.headers.get("x-csrf") != request.cookies.get("caplog_csrf"):
+                response = _error("missing CSRF token", 403)
             else:
                 response = await call_next(request)
         else:
@@ -190,6 +292,16 @@ def create_app(store: Store, config: Config) -> FastAPI:
     def verify_page():
         return FileResponse(config.static_path / "verify.html", media_type="text/html", headers={"Cache-Control": "no-cache"})
 
+    @app.get("/admin")
+    def admin_page():
+        return FileResponse(config.static_path / "admin.html", media_type="text/html", headers={"Cache-Control": "no-cache"})
+
+    @app.get("/display")
+    def display_page():
+        if store.settings().get("feature_display_page") != "true":
+            return _error("the display page is turned off", 404)
+        return FileResponse(config.static_path / "display.html", media_type="text/html", headers={"Cache-Control": "no-cache"})
+
     @app.get("/healthz")
     def health():
         try:
@@ -198,33 +310,100 @@ def create_app(store: Store, config: Config) -> FastAPI:
             return Response("database unavailable\n", status_code=503, media_type="text/plain")
         return Response("ok\n", media_type="text/plain")
 
+    def _current(request: Request) -> dict | None:
+        return store.session_user(request.cookies.get("caplog_session", ""))
+
+    def _admin(request: Request) -> dict:
+        user = _current(request)
+        if user is None or user["role"] != "admin":
+            raise ErrDenied("an admin sign-in is required")
+        return user
+
+    def _clock_text() -> str:
+        settings = store.settings()
+        if settings.get("ntp_enabled") != "true" or not settings.get("ntp_server"):
+            return ""
+        cached = getattr(app.state, "clock_cache", None)
+        now = time.time()
+        if cached and now - cached[0] < 60:
+            return cached[1]
+        text = clock_warning(settings["ntp_server"], float(settings["ntp_threshold"]))
+        app.state.clock_cache = (now, text)
+        return text
+
     @app.get("/api/state")
-    def state():
+    def state(request: Request):
+        settings = store.settings()
+        user = _current(request)
+        csrf = request.cookies.get("caplog_csrf") or new_token()
         out = {
             "setup_needed": False,
-            "max_text_chars": MAX_TEXT_CHARS,
-            "max_name_chars": MAX_NAME_CHARS,
+            "admin_needed": store.user_count() == 0,
+            "max_text_chars": store.max_text(),
+            "max_name_chars": 60 if settings.get("guest_name_rules") == "true" else 100,
             "signing": config.public_key is not None,
+            "settings": settings,
+            "user": _public_user(user),
+            "user_display": {},
+            "corrections": store.correction_map(),
+            "clock_warning": "",
+            "csrf": csrf,
         }
+        if user and user.get("display_json"):
+            try:
+                out["user_display"] = json.loads(user["display_json"])
+            except json.JSONDecodeError:
+                out["user_display"] = {}
         try:
             head = store.head()
         except ErrNoTitle:
             out["setup_needed"] = True
-            return _json(out)
+            response = _json(out)
+            response.set_cookie(
+                "caplog_csrf",
+                csrf,
+                httponly=False,
+                samesite="lax",
+                secure=_secure(request),
+                path="/",
+                max_age=86400,
+            )
+            return response
         except Exception as exc:
             return _fail(exc)
         try:
             out["title"] = store.title()
+            out["clock_warning"] = _clock_text()
         except Exception as exc:
             return _fail(exc)
         out["head_seq"] = head.seq
-        return _json(out)
+        response = _json(out)
+        response.set_cookie(
+            "caplog_csrf",
+            csrf,
+            httponly=False,
+            samesite="lax",
+            secure=_secure(request),
+            path="/",
+            max_age=86400,
+        )
+        return response
 
     @app.post("/api/setup")
     async def setup(request: Request):
         try:
-            body = await _read_json(request, 8 * 1024, {"title"})
-            record = store.setup(str(body.get("title", "")))
+            body = await _read_json(
+                request,
+                8 * 1024,
+                {"title", "username", "first_name", "last_name", "password"},
+            )
+            record = store.setup_with_admin(
+                str(body.get("title", "")),
+                str(body.get("username", "")),
+                str(body.get("first_name", "")),
+                str(body.get("last_name", "")),
+                str(body.get("password", "")),
+            )
         except (ValidationError, ErrTitleIsSet, ErrNoTitle) as exc:
             return _fail(exc)
         except Exception as exc:
@@ -232,27 +411,106 @@ def create_app(store: Store, config: Config) -> FastAPI:
         log.info("logbook created")
         return _json(record.to_dict(), 201)
 
+    @app.post("/api/login")
+    async def login(request: Request):
+        try:
+            body = await _read_json(request, 8 * 1024, {"username", "password"})
+            user, token = store.login(
+                str(body.get("username", "")),
+                str(body.get("password", "")),
+                _ip(request, config),
+            )
+        except (ValidationError, ErrDenied, ErrLocked) as exc:
+            return _fail(exc)
+        except Exception as exc:
+            return _fail(exc)
+        response = _json(_public_user(user))
+        _session_cookie(response, request, token)
+        return response
+
+    @app.post("/api/logout")
+    def logout(request: Request):
+        store.logout(request.cookies.get("caplog_session", ""))
+        response = _json({"ok": True})
+        _clear_session(response, request)
+        return response
+
     @app.post("/api/entries")
     async def add_entry(request: Request):
         try:
-            body = await _read_json(request, 16 * 1024, {"first_name", "last_name", "text"})
-            ip = client_ip(
-                _remote_host(request),
-                request.headers.get("x-forwarded-for", ""),
-                request.headers.get("x-real-ip", ""),
-                config.trusted,
+            if store.user_count() == 0:
+                raise ErrNoTitle()
+            body = await _read_json(
+                request,
+                16 * 1024,
+                {"first_name", "last_name", "text", "tag", "corrects"},
             )
-            record = store.add_entry(
-                str(body.get("first_name", "")),
-                str(body.get("last_name", "")),
-                str(body.get("text", "")),
-                ip,
-            )
-        except (ValidationError, ErrTitleIsSet, ErrNoTitle) as exc:
+            settings = store.settings()
+            user = _current(request)
+            mode = settings.get("post_mode", "both")
+            ip = _ip(request, config)
+            use_account = user is not None and mode != "guests"
+            if mode == "accounts" and user is None:
+                raise ErrDenied("sign in to add an entry")
+            if use_account:
+                first = user["first_name"]
+                last = user["last_name"]
+                meta = {"poster": "account", "username": user["username"]}
+                user_id = user["id"]
+            else:
+                rules = settings.get("guest_name_rules") == "true"
+                first = check_person_name(str(body.get("first_name", "")), "first name", rules)
+                last = check_person_name(str(body.get("last_name", "")), "last name", rules)
+                meta = {"poster": "guest"}
+                user_id = None
+            tag = str(body.get("tag", "")).strip()
+            if tag:
+                if settings.get("feature_tags") != "true":
+                    raise ErrDenied("tags are turned off")
+                allowed = [item for item in settings.get("tags", "").split(",") if item]
+                if tag not in allowed:
+                    raise ValidationError("that tag is not one of the tags the admin defined")
+                meta["tag"] = tag
+            corrects = body.get("corrects")
+            side = None
+            if corrects not in (None, "", 0):
+                if settings.get("feature_corrections") != "true":
+                    raise ErrDenied("corrections are turned off")
+                if type(corrects) is not int or store.get(corrects) is None:
+                    raise ValidationError("that entry number does not exist")
+                meta["corrects"] = corrects
+
+                def side(conn, saved, old=corrects) -> None:
+                    conn.execute(
+                        "INSERT INTO correction_links (new_seq, old_seq) VALUES (%s, %s)",
+                        (saved[0].seq, old),
+                    )
+
+            store.check_post_rate(ip, user_id)
+            record = store.add_entry(first, last, str(body.get("text", "")), ip, dumps(meta), side)
+            store.record_hit(ip, user_id)
+        except (ValidationError, ErrTitleIsSet, ErrNoTitle, ErrDenied, ErrRateLimited) as exc:
             return _fail(exc)
         except Exception as exc:
             return _fail(exc)
         return _json(record.to_dict(), 201)
+
+    @app.post("/api/display")
+    async def save_display(request: Request):
+        try:
+            if store.settings().get("users_may_change_display") != "true":
+                raise ErrDenied("the admin has turned off display changes")
+            user = _current(request)
+            body = await _read_json(request, 8 * 1024, set(DISPLAY_KEYS))
+            clean = {key: store.clean_setting(key, str(body[key])) for key in body}
+            if user is None:
+                return _json({"saved": "browser"})
+            store.save_display(user["id"], clean)
+        except (ValidationError, ErrDenied) as exc:
+            return _fail(exc)
+        except Exception as exc:
+            return _fail(exc)
+        return _json({"saved": "account"})
 
     @app.get("/api/records")
     def records(request: Request):
@@ -273,7 +531,19 @@ def create_app(store: Store, config: Config) -> FastAPI:
             if 0 < parsed <= 1000:
                 limit = parsed
         try:
-            rows = store.list_after(after, limit)
+            filters = (
+                request.query_params.get("q", ""),
+                request.query_params.get("name", ""),
+                request.query_params.get("start", ""),
+                request.query_params.get("end", ""),
+                request.query_params.get("tag", ""),
+            )
+            if any(filters):
+                rows = store.search_records(*filters, limit)
+            else:
+                rows = store.list_after(after, limit)
+        except (ValidationError, ErrDenied) as exc:
+            return _fail(exc)
         except Exception as exc:
             return _fail(exc)
         return _json([row.to_dict() for row in rows])
@@ -333,6 +603,94 @@ def create_app(store: Store, config: Config) -> FastAPI:
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    @app.get("/api/admin/state")
+    def admin_state(request: Request):
+        try:
+            _admin(request)
+        except ErrDenied as exc:
+            return _fail(exc)
+        settings = store.settings()
+        cert = describe(config.cert_dir)
+        warn_days = int(settings.get("cert_warn_days", "30"))
+        if cert.get("present") and cert.get("seconds_left", 0) < warn_days * 86400:
+            cert["warning"] = "This certificate expires soon."
+        return _json({"settings": settings, "users": store.list_users(), "certificate": cert})
+
+    @app.post("/api/admin/settings")
+    async def admin_settings(request: Request):
+        try:
+            _admin(request)
+            body = await _read_json(request, 16 * 1024, {"key", "value"})
+            record = store.set_setting(str(body.get("key", "")), str(body.get("value", "")))
+        except (ValidationError, ErrDenied, ErrNoTitle) as exc:
+            return _fail(exc)
+        except Exception as exc:
+            return _fail(exc)
+        return _json(record.to_dict())
+
+    @app.post("/api/admin/users")
+    async def admin_users(request: Request):
+        try:
+            _admin(request)
+            body = await _read_json(
+                request,
+                8 * 1024,
+                {"action", "username", "first_name", "last_name", "password", "role", "enabled"},
+            )
+            action = str(body.get("action", ""))
+            username = str(body.get("username", ""))
+            if action == "create":
+                store.create_user(
+                    username,
+                    str(body.get("first_name", "")),
+                    str(body.get("last_name", "")),
+                    str(body.get("password", "")),
+                    str(body.get("role", "user")),
+                )
+            elif action == "enabled":
+                store.set_user_enabled(username, bool(body.get("enabled")))
+            elif action == "role":
+                store.set_user_role(username, str(body.get("role", "")))
+            elif action == "password":
+                store.set_user_password(username, str(body.get("password", "")))
+            else:
+                raise ValidationError("unknown user action")
+        except (ValidationError, ErrDenied, ErrNoTitle) as exc:
+            return _fail(exc)
+        except Exception as exc:
+            return _fail(exc)
+        return _json({"ok": True})
+
+    @app.post("/api/admin/certificate")
+    async def admin_certificate(request: Request):
+        try:
+            _admin(request)
+            body = await _read_json(request, 256 * 1024, {"action", "certificate", "key", "hostname"})
+            action = str(body.get("action", ""))
+            if action == "generate":
+                hostname = store.settings().get("site_fqdn") or str(body.get("hostname", "")) or "caplog.local"
+                cert_pem, key_pem, _expires = generate_self_signed(hostname)
+            elif action == "upload":
+                cert_pem = str(body.get("certificate", "")).encode()
+                key_pem = str(body.get("key", "")).encode()
+            else:
+                raise ValidationError("unknown certificate action")
+            expires = write_pair(config.cert_dir, cert_pem, key_pem)
+            saved = store.log_system(
+                "A TLS certificate was saved. It expires on "
+                + expires.strftime("%Y-%m-%d")
+                + ". Restart CapLog before the new certificate is used.",
+                {"event": "certificate"},
+            )
+        except (ValidationError, ErrDenied, ErrNoTitle) as exc:
+            return _fail(exc)
+        except Exception as exc:
+            return _fail(exc)
+        info = describe(config.cert_dir)
+        info["restart_required"] = True
+        info["seq"] = saved.seq
+        return _json(info)
+
     @app.post("/api/export/{fmt}")
     def export(fmt: str):
         if fmt not in ("json", "pdf"):
@@ -365,7 +723,7 @@ def create_app(store: Store, config: Config) -> FastAPI:
             import io
 
             buf = io.BytesIO()
-            write_pdf(buf, store.title(), rows, record)
+            write_pdf(buf, store.title(), rows, record, store.settings().get("site_fqdn", ""))
         except Exception as exc:
             return _fail(exc)
         return Response(

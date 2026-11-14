@@ -19,3 +19,15 @@ Signed checkpoints are disabled. See the README section "Signing key".
 
 This release uses an external PostgreSQL server.
 {{- end }}
+{{- if .Values.https.enabled }}
+
+HTTPS is enabled in the chart on port {{ .Values.https.port }}.
+The process uses it only after https_enabled is true, certificate files are on the certs volume, and the pod has been restarted.
+{{- else }}
+
+HTTPS inside the pod is off. Prefer an Ingress that terminates TLS, and set trustedProxies.
+{{- end }}
+{{- if not .Values.timeCheck.enabled }}
+
+Clock comparison egress (UDP 123) is closed. Set timeCheck.enabled to true only if the admin time check should leave the cluster. CapLog does not set the clock.
+{{- end }}

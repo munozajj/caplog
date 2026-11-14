@@ -38,3 +38,39 @@ spec:
     requests:
       storage: {{ .Values.database.storage }}
 {{- end }}
+{{- if not .Values.persistence.certs.existingClaim }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "caplog.fullname" . }}-certs
+  labels: {{- include "caplog.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.persistence.certs.storageClass }}
+  storageClassName: {{ .Values.persistence.certs.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.certs.size }}
+{{- end }}
+{{- if not .Values.persistence.backups.existingClaim }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "caplog.fullname" . }}-backups
+  labels: {{- include "caplog.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.persistence.backups.storageClass }}
+  storageClassName: {{ .Values.persistence.backups.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.backups.size }}
+{{- end }}

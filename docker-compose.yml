@@ -22,6 +22,7 @@ services:
         condition: service_healthy
     ports:
       - "${CAPLOG_BIND:-0.0.0.0}:${CAPLOG_PORT:-8080}:8080"
+      - "${CAPLOG_BIND:-0.0.0.0}:${CAPLOG_HTTPS_PORT:-8443}:8443"
     environment:
       CAPLOG_LISTEN: ":8080"
       DATABASE_URL: postgresql://caplog_app:${CAPLOG_APP_PASSWORD}@postgres:5432/caplog
@@ -29,10 +30,18 @@ services:
       CAPLOG_SIGNING_KEY: /run/secrets/caplog_signing_key
       CAPLOG_CHECKPOINTS: /checkpoints/checkpoints.jsonl
       CAPLOG_TRUSTED_PROXIES: ${CAPLOG_TRUSTED_PROXIES:-}
+      CAPLOG_CERTS: /certs
+      CAPLOG_BACKUPS: /backups
+      CAPLOG_HTTPS_PORT: ${CAPLOG_HTTPS_PORT:-8443}
     secrets:
       - caplog_signing_key
     volumes:
       - caplog-checkpoints:/checkpoints
+      - caplog-certs:/certs
+      - caplog-backups:/backups
+    # Container DNS is not set here. To use specific resolvers, add:
+    # dns:
+    #   - 192.0.2.53
     tmpfs:
       - /tmp
     user: "65532:65532"
@@ -116,3 +125,5 @@ networks:
 volumes:
   caplog-pg:
   caplog-checkpoints:
+  caplog-certs:
+  caplog-backups:

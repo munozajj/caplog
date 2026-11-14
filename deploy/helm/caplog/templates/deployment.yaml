@@ -63,9 +63,17 @@ spec:
             - name: CAPLOG_SIGNING_KEY
               value: /run/secrets/caplog/{{ .Values.signingKey.key }}
             {{- end }}
+            - name: CAPLOG_CERTS
+              value: /certs
+            - name: CAPLOG_BACKUPS
+              value: /backups
+            - name: CAPLOG_HTTPS_PORT
+              value: {{ .Values.https.port | quote }}
           ports:
             - name: http
               containerPort: 8080
+            - name: https
+              containerPort: {{ .Values.https.port }}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -84,6 +92,10 @@ spec:
           volumeMounts:
             - name: checkpoints
               mountPath: /checkpoints
+            - name: certs
+              mountPath: /certs
+            - name: backups
+              mountPath: /backups
             - name: tmp
               mountPath: /tmp
             {{- if .Values.signingKey.existingSecret }}
@@ -95,6 +107,12 @@ spec:
         - name: checkpoints
           persistentVolumeClaim:
             claimName: {{ .Values.persistence.checkpoints.existingClaim | default (printf "%s-checkpoints" (include "caplog.fullname" .)) }}
+        - name: certs
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.certs.existingClaim | default (printf "%s-certs" (include "caplog.fullname" .)) }}
+        - name: backups
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.backups.existingClaim | default (printf "%s-backups" (include "caplog.fullname" .)) }}
         - name: tmp
           emptyDir: {}
         {{- if .Values.signingKey.existingSecret }}

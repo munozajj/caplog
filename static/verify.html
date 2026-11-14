@@ -12,12 +12,22 @@
       <h1>Verify</h1>
       <div class="header-actions">
         <a class="btn" href="/">Back to the log</a>
+        <button type="button" id="help-btn" class="btn help-btn">?</button>
       </div>
     </div>
   </header>
   <main>
     <section id="result" class="card result">Checking the log…</section>
   </main>
+  <aside id="help" class="help" hidden></aside>
   <script src="/static/verify.js"></script>
+  <script>
+    document.getElementById("help-btn").onclick = async () => {
+      const panel = document.getElementById("help");
+      if (!panel.hidden) { panel.hidden = true; return; }
+      panel.innerHTML = await (await fetch("/static/help/user.html")).text();
+      panel.hidden = false;
+    };
+  </script>
 </body>
 </html>

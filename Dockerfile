@@ -15,8 +15,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 RUN groupadd --gid 65532 caplog \
     && useradd --uid 65532 --gid 65532 --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin caplog \
-    && mkdir -p /checkpoints \
-    && chown 65532:65532 /checkpoints
+    && mkdir -p /checkpoints /certs /backups \
+    && chown 65532:65532 /checkpoints /certs /backups
 
 WORKDIR /app
 COPY requirements.txt .
@@ -28,8 +28,8 @@ RUN printf '%s\n' '#!/bin/sh' 'exec python -m caplog "$@"' > /usr/local/bin/capl
     && chmod 755 /usr/local/bin/caplog
 
 USER 65532:65532
-EXPOSE 8080
-VOLUME ["/checkpoints"]
+EXPOSE 8080 8443
+VOLUME ["/checkpoints", "/certs", "/backups"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["caplog", "healthcheck"]
 ENTRYPOINT ["caplog"]
 CMD ["serve"]
