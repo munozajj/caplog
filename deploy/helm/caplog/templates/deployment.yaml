@@ -4,11 +4,10 @@ metadata:
   name: {{ include "caplog.fullname" . }}
   labels: {{- include "caplog.labels" . | nindent 4 }}
 spec:
-  # Always exactly one pod: SQLite allows only one writer, and the
-  # gap-free entry numbering depends on it. Do not scale this up.
+  # One pod. The checkpoint file is on a ReadWriteOnce volume.
   replicas: 1
   strategy:
-    type: Recreate   # stop the old pod before starting the new one
+    type: Recreate
   selector:
     matchLabels: {{- include "caplog.selectorLabels" . | nindent 6 }}
   template:
@@ -27,7 +26,7 @@ spec:
         runAsNonRoot: true
         runAsUser: 65532
         runAsGroup: 65532
-        fsGroup: 65532          # makes the volumes writable by the app user
+        fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -38,16 +37,28 @@ spec:
           env:
             - name: CAPLOG_LISTEN
               value: ":8080"
-            - name: CAPLOG_DB
-              value: /data/caplog.db
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "caplog.dbSecret" . }}
+                  key: {{ ternary "DATABASE_URL" .Values.externalDatabase.urlKey .Values.database.enabled }}
+            - name: CAPLOG_MIGRATE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "caplog.dbSecret" . }}
+                  key: {{ ternary "CAPLOG_MIGRATE_URL" .Values.externalDatabase.migrateUrlKey .Values.database.enabled }}
             - name: CAPLOG_CHECKPOINTS
               value: /checkpoints/checkpoints.jsonl
             - name: CAPLOG_CHECKPOINT_EVERY
               value: {{ .Values.checkpoint.every | quote }}
             - name: CAPLOG_CHECKPOINT_INTERVAL
               value: {{ .Values.checkpoint.interval | quote }}
-            - name: GOMEMLIMIT
-              value: {{ .Values.goMemLimit | quote }}
+            - name: CAPLOG_MAX_IMPORT_MB
+              value: {{ .Values.maxImportMb | quote }}
+            {{- if .Values.trustedProxies }}
+            - name: CAPLOG_TRUSTED_PROXIES
+              value: {{ .Values.trustedProxies | quote }}
+            {{- end }}
             {{- if .Values.signingKey.existingSecret }}
             - name: CAPLOG_SIGNING_KEY
               value: /run/secrets/caplog/{{ .Values.signingKey.key }}
@@ -71,27 +82,26 @@ spec:
             periodSeconds: 10
           resources: {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
-            - name: data
-              mountPath: /data
             - name: checkpoints
               mountPath: /checkpoints
+            - name: tmp
+              mountPath: /tmp
             {{- if .Values.signingKey.existingSecret }}
             - name: signing-key
               mountPath: /run/secrets/caplog
               readOnly: true
             {{- end }}
       volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: {{ .Values.persistence.data.existingClaim | default (printf "%s-data" (include "caplog.fullname" .)) }}
         - name: checkpoints
           persistentVolumeClaim:
             claimName: {{ .Values.persistence.checkpoints.existingClaim | default (printf "%s-checkpoints" (include "caplog.fullname" .)) }}
+        - name: tmp
+          emptyDir: {}
         {{- if .Values.signingKey.existingSecret }}
         - name: signing-key
           secret:
             secretName: {{ .Values.signingKey.existingSecret }}
-            defaultMode: 0440   # readable by the app's group (fsGroup) only
+            defaultMode: 0444
             items:
               - key: {{ .Values.signingKey.key }}
                 path: {{ .Values.signingKey.key }}

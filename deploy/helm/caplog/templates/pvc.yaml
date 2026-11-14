@@ -1,22 +1,40 @@
-{{- range $name := list "data" "checkpoints" }}
-{{- $p := index $.Values.persistence $name }}
-{{- if not $p.existingClaim }}
----
+{{- if not .Values.persistence.checkpoints.existingClaim }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "caplog.fullname" $ }}-{{ $name }}
-  labels: {{- include "caplog.labels" $ | nindent 4 }}
+  name: {{ include "caplog.fullname" . }}-checkpoints
+  labels: {{- include "caplog.labels" . | nindent 4 }}
   annotations:
-    # Keep the logbook if the chart is uninstalled.
     helm.sh/resource-policy: keep
 spec:
   accessModes: ["ReadWriteOnce"]
-  {{- if $p.storageClass }}
-  storageClassName: {{ $p.storageClass }}
+  {{- if .Values.persistence.checkpoints.storageClass }}
+  storageClassName: {{ .Values.persistence.checkpoints.storageClass }}
   {{- end }}
   resources:
     requests:
-      storage: {{ $p.size }}
+      storage: {{ .Values.persistence.checkpoints.size }}
 {{- end }}
+{{- if .Values.database.enabled }}
+{{- if not .Values.persistence.checkpoints.existingClaim }}
+---
+{{- end }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "caplog.fullname" . }}-postgres
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: postgres
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.database.storageClass }}
+  storageClassName: {{ .Values.database.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.database.storage }}
 {{- end }}

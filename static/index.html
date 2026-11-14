@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CapLog</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <h1 id="log-title">CapLog</h1>
+      <div class="header-actions" id="actions" hidden>
+        <span id="live" class="live off"><i></i> Live</span>
+        <button type="button" id="export-pdf" class="btn">Export PDF</button>
+        <button type="button" id="export-json" class="btn">Export JSON</button>
+        <button type="button" id="import-btn" class="btn">Import</button>
+        <a class="btn" href="/verify">Verify</a>
+        <input id="import-file" type="file" accept="application/json,.json" hidden>
+      </div>
+    </div>
+  </header>
+  <main>
+    <section id="setup" class="card" hidden>
+      <form id="setup-form">
+        <label for="title">Logbook title</label>
+        <input id="title" maxlength="200" autocomplete="off" required>
+        <div class="form-row">
+          <button type="submit" class="btn btn-add">Set title</button>
+        </div>
+        <p class="small">The title is set once and can never be changed.</p>
+      </form>
+    </section>
+    <section id="log" hidden>
+      <form id="entry-form" class="card">
+        <div class="names">
+          <div>
+            <label for="first">First name</label>
+            <input id="first" autocomplete="given-name" required>
+          </div>
+          <div>
+            <label for="last">Last name</label>
+            <input id="last" autocomplete="family-name" required>
+          </div>
+        </div>
+        <div class="text-head">
+          <label for="text">Entry</label>
+          <span id="count">0 / 500</span>
+        </div>
+        <textarea id="text" required></textarea>
+        <div class="form-row">
+          <button type="submit" class="btn btn-add" id="add-btn">Add</button>
+          <span id="form-msg" class="msg"></span>
+        </div>
+      </form>
+      <div id="entries"></div>
+    </section>
+  </main>
+  <div id="backdrop" class="backdrop" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-text">
+      <p id="confirm-text" class="warn"></p>
+      <pre id="confirm-preview" class="preview" hidden></pre>
+      <div class="dialog-actions">
+        <button type="button" id="confirm-cancel" class="btn">Cancel</button>
+        <button type="button" id="confirm-ok" class="btn btn-add">Confirm</button>
+      </div>
+    </div>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
