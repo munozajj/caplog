@@ -126,7 +126,7 @@ CapLog is a general-purpose shared logbook. People open it in a browser and writ
 
 ## 6. Session log
 
-- 2026-11-14: Added this project memory and the instruction to read it at the start of every task. No application code changed. Pull request link pending.
+- 2026-11-14: Added this project memory and the instruction to read it at the start of every task. No application code changed. [PR #6](https://github.com/munozajj/caplog/pull/6)
 - 2026-11-14: Published the app port on a non-internal network and left PostgreSQL on the internal network only. [PR #5](https://github.com/munozajj/caplog/pull/5)
 - 2026-11-14: Fixed the first-time signing-key steps, documented what the logbook is for, and added install steps for macOS, Windows, and Linux. [PR #4](https://github.com/munozajj/caplog/pull/4)
 - 2026-11-14: Replaced the Go server with Python, FastAPI, and PostgreSQL, and kept the hash, export, and import behavior. [PR #3](https://github.com/munozajj/caplog/pull/3)
