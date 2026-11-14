@@ -4,39 +4,158 @@ A shared logbook. Many people can add entries at the same time. There are no acc
 
 One logbook per deployment. Open it by name or by IP on port 8080.
 
+## What it is for
+
+CapLog is a record people write while work is in progress, and then keep.
+
+Deploy it, finish the first-time setup, and give people the address. They do not need an account. Anyone who can open the page can add an entry. After an entry is saved, no one can change it and no one can delete it. The text, the name, the time, and the address it came from stay as they were written. That is the history, and it is also the archive.
+
+Several people can keep the same page open. Each person writes what they just did. The new entry appears for everyone, with the newest entry at the top. The list is in order, so you can see who did what, and what was written immediately before a problem. The log is not tied to one kind of work.
+
 - The title is typed once, on first use, and cannot be changed.
 - Each entry has a first name, a last name, and up to 500 characters of text. CapLog adds the entry number, the time (UTC, shown in the viewer's local time), and the poster's IP address.
 - New entries show up for everyone immediately (Server-Sent Events). Newest entries are at the top.
 - Every record is linked to the one before it by a SHA-256 fingerprint. Checkpoints of that chain are signed with a key the database never sees.
 - Export PDF or JSON. Each export writes a permanent system entry. A JSON export can be checked on its own and imported into another CapLog.
 
-## Quick start (Docker Compose on a Mac)
+## Install Docker
 
-You need Docker Desktop with the Compose plugin.
+Install Docker before the deploy steps. When it is running, both of these commands must succeed:
+
+```bash
+docker version
+docker compose version
+```
+
+You also need Git. If `git` is not installed, use [the Git downloads page](https://git-scm.com/downloads).
+
+### macOS
+
+Install [Docker Desktop for Mac](https://docs.docker.com/desktop/setup/install/mac-install/). The current macOS release and the two before it are supported. The computer needs at least 4 GB of memory.
+
+1. Download `Docker.dmg` from that page.
+2. Open it and drag Docker to the Applications folder.
+3. Open Docker from Applications and accept the agreement.
+4. Wait until Docker Desktop says it is running.
+
+```bash
+docker version
+docker compose version
+```
+
+### Windows
+
+Install [Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/). It uses the WSL 2 backend. In PowerShell, `wsl --version` must show WSL 2.1.5 or later. Turn on hardware virtualization if it is off.
+
+1. Download `Docker Desktop Installer.exe` from that page.
+2. In PowerShell, from the folder that contains the installer:
+
+```powershell
+Start-Process '.\Docker Desktop Installer.exe' -Wait -ArgumentList 'install', '--user'
+```
+
+3. Open Docker Desktop and accept the agreement. Leave it running.
+
+```powershell
+docker version
+docker compose version
+```
+
+If you do the rest of the setup inside a WSL distribution, use the Linux commands in that distribution instead of the PowerShell deploy commands below.
+
+### Linux
+
+Install Docker Engine and the Compose plugin. Steps for distributions other than Ubuntu are on [the Docker Engine install page](https://docs.docker.com/engine/install/). The package list must include `docker-compose-plugin`.
+
+On Ubuntu, the current [Docker Engine steps](https://docs.docker.com/engine/install/ubuntu/) are:
+
+```bash
+sudo apt remove $(dpkg --get-selections docker.io docker-compose docker-compose-v2 docker-doc docker-buildx podman-docker containerd runc | cut -f1)
+sudo apt update
+sudo apt install ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+sudo apt update
+sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker "$USER"
+```
+
+Skip the `apt remove` line if none of those older packages are installed. Log out and log back in so the group change applies. You can run `newgrp docker` instead of logging out. Then:
+
+```bash
+docker version
+docker compose version
+```
+
+## Deploy with Docker Compose
 
 ```bash
 git clone https://github.com/munozajj/caplog.git
 cd caplog
-git checkout feat/python-fastapi
+```
+
+### macOS and Linux
+
+```bash
 cp .env.example .env
 ```
 
-Edit `.env`. Set three passwords. Use letters and digits only.
+Edit `.env`. Set three passwords. Use letters and digits only. Or fill the three passwords with:
+
+```bash
+# macOS
+for v in POSTGRES_PASSWORD CAPLOG_OWNER_PASSWORD CAPLOG_APP_PASSWORD; do sed -i '' "s/^$v=.*/$v=$(openssl rand -hex 16)/" .env; done
+
+# Linux
+for v in POSTGRES_PASSWORD CAPLOG_OWNER_PASSWORD CAPLOG_APP_PASSWORD; do sed -i "s/^$v=.*/$v=$(openssl rand -hex 16)/" .env; done
+```
 
 ```bash
 docker compose build
-
 mkdir -p secrets
-docker compose run --rm --no-deps --user "$(id -u):$(id -g)" \
-  -v "$PWD/secrets:/out" app \
-  keygen -out /out/caplog_signing.key
-
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/secrets:/out" caplog:local keygen -out /out/caplog_signing.key
+chmod 0444 secrets/caplog_signing.key
 docker compose up -d
 ```
 
+The container runs as uid 65532 and must be able to read the key file.
+
+### Windows (PowerShell)
+
+```powershell
+Copy-Item .env.example .env
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$names = "POSTGRES_PASSWORD","CAPLOG_OWNER_PASSWORD","CAPLOG_APP_PASSWORD"
+$text = Get-Content .env
+foreach ($name in $names) {
+  $bytes = New-Object byte[] 16
+  $rng.GetBytes($bytes)
+  $pw = ([System.BitConverter]::ToString($bytes)).Replace("-","").ToLower()
+  $text = $text -replace "^$name=.*", "$name=$pw"
+}
+$utf8 = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllLines("$PWD\.env", $text, $utf8)
+docker compose build
+New-Item -ItemType Directory -Force -Path secrets | Out-Null
+docker run --rm -v "${PWD}/secrets:/out" caplog:local keygen -out /out/caplog_signing.key
+docker run --rm --user 0 --entrypoint chmod -v "${PWD}/secrets:/out" caplog:local 0444 /out/caplog_signing.key
+docker compose up -d
+```
+
+The container runs as uid 65532 and must be able to read the key file. PowerShell has no `chmod`, so the second `docker run` sets that mode.
+
 Open `http://localhost:8080/`. The first visit asks for the logbook title.
 
-`keygen` writes `secrets/caplog_signing.key` (mode 0600) and `secrets/caplog_signing.key.pub`. It refuses to overwrite an existing file. Copy the `.pub` file off this Mac. The private key stays in `secrets/` and is passed to the container as a Docker secret. It is not in the image.
+`keygen` writes `secrets/caplog_signing.key` (mode 0600) and `secrets/caplog_signing.key.pub`. It refuses to overwrite an existing file. The `chmod` step then makes the private key readable by the container user. Copy the `.pub` file off this computer. The private key stays in `secrets/` and is passed to the container as a Docker secret. It is not in the image.
 
 To use another host port, set `CAPLOG_PORT` in `.env`. To listen on one address only, set `CAPLOG_BIND`.
 
@@ -204,6 +323,7 @@ The tests create `caplog_owner` and `caplog_app` in that server. The database us
 
 | Path | What it is |
 |---|---|
+| `AGENTS.md` | Instruction to check this README after every code change |
 | `caplog/` | Chain, database, checkpoints, PDF, HTTP API, commands |
 | `static/` | The page, the style, and the Inter font |
 | `deploy/helm/caplog` | Helm chart |

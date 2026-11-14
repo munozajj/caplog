@@ -5,9 +5,10 @@
 #
 #   docker compose build
 #   mkdir -p secrets
-#   docker compose run --rm --no-deps --user "$(id -u):$(id -g)" -v "$PWD/secrets:/out" app \
-#     keygen -out /out/caplog_signing.key
+#   docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/secrets:/out" caplog:local keygen -out /out/caplog_signing.key
+#   chmod 0444 secrets/caplog_signing.key
 #   docker compose up -d
+# The container runs as uid 65532 and must be able to read the key file.
 
 name: caplog
 
