@@ -55,6 +55,7 @@ services:
         max-file: "3"
     networks:
       - caplog
+      - web
 
   postgres:
     image: postgres:17.12
@@ -103,9 +104,13 @@ secrets:
     file: ${CAPLOG_SIGNING_KEY_FILE:-./secrets/caplog_signing.key}
 
 networks:
-  # No route to other networks. The published app port is still reachable on the host.
+  # caplog is internal, so it has no route outside this Compose project.
+  # Postgres is only on caplog. The app is also on web, which is not
+  # internal, so Docker publishes the app port on the host.
   caplog:
     internal: true
+  web:
+    internal: false
 
 volumes:
   caplog-pg:
