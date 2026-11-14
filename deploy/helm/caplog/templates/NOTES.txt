@@ -1,4 +1,4 @@
-CapLog is starting (one pod, by design).
+CapLog is starting (one pod, because the checkpoint file is on one volume).
 
 {{- if .Values.ingress.enabled }}
 Open: http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}/
@@ -8,11 +8,14 @@ Try it locally:
   then open http://localhost:8080/
 {{- end }}
 
-Verify the log at any time:
-  kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "caplog.fullname" . }} -- /caplog verify
+Verify the log:
+  kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "caplog.fullname" . }} -- caplog verify
 {{- if not .Values.signingKey.existingSecret }}
 
 WARNING: no signing key configured (signingKey.existingSecret is empty).
-Signed checkpoints are disabled, so a fully rewritten log could go undetected.
-See the README section "Signing key".
+Signed checkpoints are disabled. See the README section "Signing key".
+{{- end }}
+{{- if not .Values.database.enabled }}
+
+This release uses an external PostgreSQL server.
 {{- end }}
