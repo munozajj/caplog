@@ -21,18 +21,25 @@ git checkout feat/python-fastapi
 cp .env.example .env
 ```
 
-Edit `.env`. Set three passwords. Use letters and digits only.
+Edit `.env`. Set three passwords. Use letters and digits only. Or fill the three passwords with:
+
+```bash
+# macOS
+for v in POSTGRES_PASSWORD CAPLOG_OWNER_PASSWORD CAPLOG_APP_PASSWORD; do sed -i '' "s/^$v=.*/$v=$(openssl rand -hex 16)/" .env; done
+
+# Linux
+for v in POSTGRES_PASSWORD CAPLOG_OWNER_PASSWORD CAPLOG_APP_PASSWORD; do sed -i "s/^$v=.*/$v=$(openssl rand -hex 16)/" .env; done
+```
 
 ```bash
 docker compose build
-
 mkdir -p secrets
-docker compose run --rm --no-deps --user "$(id -u):$(id -g)" \
-  -v "$PWD/secrets:/out" app \
-  keygen -out /out/caplog_signing.key
-
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/secrets:/out" caplog:local keygen -out /out/caplog_signing.key
+chmod 0444 secrets/caplog_signing.key
 docker compose up -d
 ```
+
+The container runs as uid 65532 and must be able to read the key file.
 
 Open `http://localhost:8080/`. The first visit asks for the logbook title.
 
