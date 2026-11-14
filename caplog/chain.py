@@ -21,6 +21,7 @@ KIND_ENTRY = "entry"
 KIND_EXPORT = "export"
 KIND_IMPORT = "import"
 KIND_IMPORTED = "imported"
+KIND_SYSTEM = "system"
 
 
 @dataclass

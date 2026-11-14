@@ -5,3 +5,4 @@ psycopg-binary==3.3.9
 psycopg-pool==3.3.3
 cryptography==50.0.2
 fpdf2==2.9.0
+argon2-cffi==25.1.0

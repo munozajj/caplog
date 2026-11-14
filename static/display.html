@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Display - CapLog</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    body { background: #10141c; color: #f4f6fb; }
+    header, .entry { background: #1a2030; color: inherit; }
+    h1 { font-size: 2rem; }
+    .body { font-size: 1.6rem; }
+    .num, .when, .who { font-size: 1.2rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <h1 id="title">CapLog</h1>
+      <a class="btn" href="/">Logbook</a>
+      <button type="button" id="help-btn" class="btn help-btn">?</button>
+    </div>
+  </header>
+  <main><div id="entries"></div></main>
+  <aside id="help" class="help" hidden></aside>
+  <script src="/static/display.js"></script>
+</body>
+</html>

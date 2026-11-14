@@ -17,3 +17,18 @@ class ErrNoTitle(CaplogError):
 class ErrTitleIsSet(CaplogError):
     def __init__(self) -> None:
         super().__init__("the logbook title is already set and can never be changed")
+
+
+class ErrDenied(CaplogError):
+    def __init__(self, message: str = "not allowed") -> None:
+        super().__init__(message)
+
+
+class ErrLocked(CaplogError):
+    def __init__(self) -> None:
+        super().__init__("this account is locked after repeated failed sign-in attempts")
+
+
+class ErrRateLimited(CaplogError):
+    def __init__(self) -> None:
+        super().__init__("too many posts, try again later")

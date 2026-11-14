@@ -111,4 +111,54 @@ STATEMENTS = [
     FOR EACH ROW
     EXECUTE FUNCTION caplog_insert_check()
     """,
+    """
+    CREATE TABLE IF NOT EXISTS users (
+        id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        username      text NOT NULL UNIQUE,
+        first_name    text NOT NULL,
+        last_name     text NOT NULL,
+        password_hash text NOT NULL,
+        role          text NOT NULL,
+        enabled       boolean NOT NULL DEFAULT true,
+        is_master     boolean NOT NULL DEFAULT false,
+        display_json  text NOT NULL DEFAULT '',
+        locked_until  text NOT NULL DEFAULT '',
+        created_at    text NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS sessions (
+        token      text PRIMARY KEY,
+        user_id    bigint NOT NULL,
+        expires_at text NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS settings (
+        key   text PRIMARY KEY,
+        value text NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS login_attempts (
+        id       bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        username text NOT NULL,
+        ip       text NOT NULL,
+        at       text NOT NULL,
+        ok       boolean NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS post_hits (
+        id     bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        bucket text NOT NULL,
+        at     text NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS correction_links (
+        new_seq bigint PRIMARY KEY,
+        old_seq bigint NOT NULL
+    )
+    """,
 ]

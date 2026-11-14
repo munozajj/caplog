@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin - CapLog</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <h1>CapLog admin</h1>
+      <div class="header-actions">
+        <a class="btn" href="/">Logbook</a>
+        <button type="button" id="help-btn" class="btn help-btn">?</button>
+      </div>
+    </div>
+  </header>
+  <main>
+    <p class="card admin-banner">An admin cannot edit, hide, or delete an entry. Every change on this page is written as a permanent system entry. Passwords and certificate keys are not written into the log.</p>
+    <section id="gate" class="card">
+      <form id="login-form">
+        <label for="user">Username</label>
+        <input id="user" autocomplete="username" required>
+        <label for="pass">Password</label>
+        <input id="pass" type="password" autocomplete="current-password" required>
+        <div class="form-row"><button class="btn btn-add" type="submit">Sign in</button><span id="login-msg" class="msg"></span></div>
+      </form>
+    </section>
+    <section id="panel" hidden>
+      <form id="settings-form" class="card"></form>
+      <form id="user-form" class="card">
+        <h2>Accounts</h2>
+        <div id="users"></div>
+        <h3>New account</h3>
+        <label for="new-user">Username</label><input id="new-user" required>
+        <div class="names">
+          <div><label for="new-first">First name</label><input id="new-first" required></div>
+          <div><label for="new-last">Last name</label><input id="new-last" required></div>
+        </div>
+        <label for="new-pass">Password</label><input id="new-pass" type="password" required>
+        <label for="new-role">Role</label>
+        <select id="new-role"><option value="user">user</option><option value="admin">admin</option></select>
+        <div class="form-row"><button class="btn btn-add" type="submit">Create account</button><span id="user-msg" class="msg"></span></div>
+      </form>
+      <form id="cert-form" class="card">
+        <h2>Certificate</h2>
+        <p id="cert-info" class="small"></p>
+        <label for="cert-pem">Certificate PEM</label>
+        <textarea id="cert-pem"></textarea>
+        <label for="key-pem">Private key PEM</label>
+        <textarea id="key-pem"></textarea>
+        <div class="form-row">
+          <button class="btn" type="button" id="cert-generate">Generate a self-signed certificate</button>
+          <button class="btn btn-add" type="submit">Upload</button>
+        </div>
+        <p class="small">The key is stored on the certificate volume, not in the database. Restart CapLog after saving a certificate before HTTPS uses it.</p>
+      </form>
+    </section>
+  </main>
+  <aside id="help" class="help" hidden></aside>
+  <script src="/static/admin.js"></script>
+</body>
+</html>

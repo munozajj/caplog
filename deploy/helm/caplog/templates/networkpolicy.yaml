@@ -14,6 +14,10 @@ spec:
     - ports:
         - port: 8080
           protocol: TCP
+        {{- if .Values.https.enabled }}
+        - port: {{ .Values.https.port }}
+          protocol: TCP
+        {{- end }}
       {{- with .Values.networkPolicy.from }}
       from: {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -33,7 +37,7 @@ spec:
         - port: {{ .Values.externalDatabase.port }}
           protocol: TCP
     {{- end }}
-    # Name resolution for the Postgres Service. Nothing else is allowed out.
+    # Name resolution for the Postgres Service. UDP 123 is added only when timeCheck.enabled is true.
     - to:
         - namespaceSelector:
             matchLabels:
@@ -43,6 +47,12 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+    {{- if .Values.timeCheck.enabled }}
+    # NTP query only. CapLog does not set the clock.
+    - ports:
+        - protocol: UDP
+          port: 123
+    {{- end }}
 {{- if .Values.database.enabled }}
 ---
 apiVersion: networking.k8s.io/v1

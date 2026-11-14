@@ -1,0 +1,30 @@
+<h2>Admin</h2>
+<p>This page is only for admin accounts. An admin cannot edit, hide, or delete an entry. Every settings change and every account change is a permanent system entry. Passwords, session tokens, and certificate private keys are never written into that entry.</p>
+<h2>Settings</h2>
+<ul>
+  <li><code>post_mode</code>: both, guests, or accounts.</li>
+  <li><code>users_may_change_display</code>: whether people can change what the logbook shows, including <code>post_box</code> (top, bottom, left, right, or center).</li>
+  <li><code>site_fqdn</code>: the host name used in links, exports, and the PDF header.</li>
+  <li><code>https_enabled</code>, <code>https_port</code>, <code>http_redirect</code>: HTTPS on a separate port. Restart CapLog after a certificate change. Leave these off when a reverse proxy or a Kubernetes Ingress terminates TLS, and set trusted proxies so the stored address is the person, not the proxy.</li>
+  <li><code>cert_warn_days</code>: warn when the certificate expiry is inside this many days.</li>
+  <li><code>ntp_enabled</code>, <code>ntp_server</code>, <code>ntp_threshold</code>: compare the clock. The default threshold is 2 seconds. CapLog does not set the clock. Run chrony or NTP on the host or on the Kubernetes nodes. The Helm value <code>timeCheck.enabled</code> must also be true or the network policy blocks UDP port 123.</li>
+  <li><code>max_entry_length</code>: default 500.</li>
+  <li><code>accent_color</code>: a color such as #0d6e6a.</li>
+  <li><code>show_ips</code>: whether IP addresses can be shown. They are still stored.</li>
+  <li><code>guest_name_rules</code>: letters, spaces, apostrophes, and hyphens.</li>
+  <li><code>feature_search</code>, <code>feature_tags</code>, <code>feature_notice</code>, <code>feature_corrections</code>, <code>feature_rate_limit</code>, <code>feature_scheduled_export</code>, <code>feature_display_page</code>: each extra feature.</li>
+  <li><code>notice</code>: the pinned notice. Clearing it is also logged.</li>
+  <li><code>tags</code>: comma-separated names the poster can choose.</li>
+  <li><code>rate_limit_count</code> and <code>rate_limit_window</code>: posts per IP address and per account.</li>
+  <li><code>login_max_failures</code> and <code>login_lock_minutes</code>: sign-in lockout.</li>
+  <li><code>export_every</code>, <code>export_pdf</code>, <code>export_keep</code>: scheduled JSON backups, optional PDF, and how many files to keep on the backup volume.</li>
+  <li><code>show_number</code>, <code>show_name</code>, <code>show_time</code>, <code>show_ip</code>, <code>show_poster</code>, <code>show_tags</code>, <code>time_zone</code>, <code>clock</code>, <code>post_box</code>: display defaults.</li>
+</ul>
+<h2>Accounts</h2>
+<p>Accounts are local. There is no external identity provider. Passwords are hashed with argon2id. The first admin cannot be disabled or changed to a normal user. Disabling another account does not hide that person's entries.</p>
+<h2>Certificates</h2>
+<p>Generate a self-signed certificate or upload a PEM certificate and an unencrypted PEM private key. The key is stored on the certificate volume as mode 0600. It is not in the database, the logs, or the repository. Restart the container or the pod before the process listens with the new files.</p>
+<h2>DNS, time, and deployment</h2>
+<p>CapLog does not run a DNS server. Set container DNS with Compose <code>dns:</code> on the app service, or use the cluster DNS. Create an A record or a CNAME record for <code>site_fqdn</code> at your DNS host.</p>
+<p>Time sync stays on the host or the nodes. A warning banner is shown to everyone when the drift is over the threshold.</p>
+<p>Docker Compose publishes the app on the non-internal <code>web</code> network. PostgreSQL stays on the internal <code>caplog</code> network. Certificate files use the <code>caplog-certs</code> volume. Backups use <code>caplog-backups</code>. Helm has the same volumes, an HTTPS service port when <code>https.enabled</code> is true, and UDP 123 only when <code>timeCheck.enabled</code> is true.</p>

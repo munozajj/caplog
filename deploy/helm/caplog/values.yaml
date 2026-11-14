@@ -17,6 +17,20 @@ service:
   type: ClusterIP
   port: 80
 
+# HTTPS inside the pod. Leave this off when an Ingress terminates TLS.
+# Turning it on also opens the port in the NetworkPolicy. The process
+# listens on this port only after a restart, and only when https_enabled
+# is true and certificate files exist on the certs volume.
+https:
+  enabled: false
+  port: 8443
+
+# Clock comparison only. CapLog never sets the clock. This is what opens
+# egress UDP 123. The admin setting ntp_enabled is separate and is not
+# enough on its own.
+timeCheck:
+  enabled: false
+
 ingress:
   enabled: false
   className: ""
@@ -60,6 +74,14 @@ externalDatabase:
 persistence:
   checkpoints:
     size: 64Mi
+    storageClass: ""
+    existingClaim: ""
+  certs:
+    size: 16Mi
+    storageClass: ""
+    existingClaim: ""
+  backups:
+    size: 1Gi
     storageClass: ""
     existingClaim: ""
 

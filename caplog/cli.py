@@ -5,6 +5,8 @@ import json
 import logging
 import os
 import sys
+import threading
+import time
 import urllib.request
 from pathlib import Path
 
@@ -156,6 +158,52 @@ def _cmd_migrate(args: argparse.Namespace) -> None:
     migrate(args.migrate_url, args.app_role)
 
 
+def _backup_loop(store: Store, directory: str) -> None:
+    from caplog.errors import ErrNoTitle
+
+    while True:
+        time.sleep(60)
+        try:
+            settings = store.settings()
+            if settings.get("feature_scheduled_export") != "true" or settings.get("export_every") == "off":
+                continue
+            gap = 3600 if settings.get("export_every") == "hourly" else 86400
+            last = settings.get("export_last") or ""
+            if last:
+                from datetime import datetime, timezone
+
+                try:
+                    previous = datetime.fromisoformat(last.replace("Z", "+00:00"))
+                except ValueError:
+                    previous = datetime.fromtimestamp(0, timezone.utc)
+                if (datetime.now(timezone.utc) - previous).total_seconds() < gap:
+                    continue
+            record = store.record_export("json")
+            path = Path(directory)
+            path.mkdir(parents=True, exist_ok=True)
+            stamp = record.created_at.replace(":", "").replace("-", "")
+            target = path / f"caplog-{stamp}-{record.seq}.json"
+            with target.open("wb") as handle:
+                store.write_json_export(handle, record)
+            if settings.get("export_pdf") == "true":
+                from caplog.pdfexport import write_pdf
+
+                rows = []
+                store.each(record.seq, rows.append)
+                pdf = path / f"caplog-{stamp}-{record.seq}.pdf"
+                with pdf.open("wb") as handle:
+                    write_pdf(handle, store.title(), rows, record, settings.get("site_fqdn", ""))
+            keep = int(settings.get("export_keep") or "7")
+            files = sorted(path.glob("caplog-*"))
+            for old in files[:-keep]:
+                old.unlink(missing_ok=True)
+            store.set_setting("export_last", record.created_at)
+        except ErrNoTitle:
+            continue
+        except Exception:
+            log.exception("scheduled export failed")
+
+
 def _cmd_serve(args: argparse.Namespace) -> None:
     if not args.database_url:
         raise SystemExit("DATABASE_URL is required")
@@ -186,6 +234,8 @@ def _cmd_serve(args: argparse.Namespace) -> None:
         from caplog.checkpoint import key_id
 
         log.info("signed checkpoints enabled file=%s key_id=%s", args.checkpoints, key_id(public))
+    cert_dir = _env("CAPLOG_CERTS", "/certs")
+    backup_dir = _env("CAPLOG_BACKUPS", "/backups")
     app = create_app(
         store,
         Config(
@@ -194,6 +244,8 @@ def _cmd_serve(args: argparse.Namespace) -> None:
             max_import_bytes=args.max_import_mb * 1024 * 1024,
             trusted=trusted,
             static_path=static_dir(),
+            cert_dir=cert_dir,
+            backup_dir=backup_dir,
         ),
     )
     host, port = _split_listen(args.listen)
@@ -208,6 +260,30 @@ def _cmd_serve(args: argparse.Namespace) -> None:
         log_level="info",
     )
     server = uvicorn.Server(config)
+    try:
+        https_on = store.settings().get("https_enabled") == "true"
+    except Exception:
+        https_on = False
+    cert_file = Path(cert_dir) / "cert.pem"
+    key_file = Path(cert_dir) / "key.pem"
+    if https_on and cert_file.exists() and key_file.exists():
+        https_port = _env_int("CAPLOG_HTTPS_PORT", 8443)
+
+        def _https() -> None:
+            uvicorn.run(
+                app,
+                host=host,
+                port=https_port,
+                ssl_certfile=str(cert_file),
+                ssl_keyfile=str(key_file),
+                access_log=False,
+                proxy_headers=False,
+                log_level="info",
+            )
+
+        threading.Thread(target=_https, name="caplog-https", daemon=True).start()
+        log.info("HTTPS listening port=%s", https_port)
+    threading.Thread(target=_backup_loop, args=(store, backup_dir), name="caplog-backup", daemon=True).start()
     log.info("CapLog listening addr=%s version=%s", args.listen, os.environ.get("CAPLOG_VERSION", __version__))
     try:
         server.run()
