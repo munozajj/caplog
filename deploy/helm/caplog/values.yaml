@@ -1,0 +1,91 @@
+# CapLog Helm values.
+
+image:
+  repository: ghcr.io/munozajj/caplog
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Private key for signed checkpoints. Create the Secret yourself.
+#   kubectl create secret generic caplog-signing-key --from-file=signing.key=./caplog_signing.key
+signingKey:
+  existingSecret: ""
+  key: signing.key
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: caplog.example.lan
+  tls: []
+
+# In-cluster PostgreSQL. Set database.enabled to false to use an external server.
+database:
+  enabled: true
+  image: postgres:17.12
+  storage: 5Gi
+  storageClass: ""
+  auth:
+    # Use an existing Secret instead of generating one. Keys:
+    # POSTGRES_PASSWORD, CAPLOG_OWNER_PASSWORD, CAPLOG_APP_PASSWORD,
+    # DATABASE_URL, CAPLOG_MIGRATE_URL.
+    existingSecret: ""
+    # Optional. Leave empty and Helm generates them on install and keeps them on upgrade.
+    postgresPassword: ""
+    ownerPassword: ""
+    appPassword: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+# Used only when database.enabled is false.
+# The Secret must contain DATABASE_URL and CAPLOG_MIGRATE_URL.
+externalDatabase:
+  existingSecret: ""
+  urlKey: DATABASE_URL
+  migrateUrlKey: CAPLOG_MIGRATE_URL
+  # NetworkPolicy egress. Example: 10.1.0.0/24
+  cidr: ""
+  port: 5432
+
+persistence:
+  checkpoints:
+    size: 64Mi
+    storageClass: ""
+    existingClaim: ""
+
+checkpoint:
+  every: 25
+  interval: 10m
+
+maxImportMb: 20
+
+# Comma-separated IPs or CIDRs. Empty records the connecting address.
+trustedProxies: ""
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+networkPolicy:
+  enabled: true
+  from: []
+  # DNS is allowed so the app can resolve the Postgres Service name.
+  dnsNamespace: kube-system
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

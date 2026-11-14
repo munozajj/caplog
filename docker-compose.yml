@@ -1,0 +1,112 @@
+# CapLog with Docker Compose: the app and PostgreSQL.
+#
+# Copy .env.example to .env and set the three passwords first.
+# Passwords must be letters and digits so they are safe in a database URL.
+#
+#   docker compose build
+#   mkdir -p secrets
+#   docker compose run --rm --no-deps --user "$(id -u):$(id -g)" -v "$PWD/secrets:/out" app \
+#     keygen -out /out/caplog_signing.key
+#   docker compose up -d
+
+name: caplog
+
+services:
+  app:
+    image: ${CAPLOG_IMAGE:-caplog:local}
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${CAPLOG_BIND:-0.0.0.0}:${CAPLOG_PORT:-8080}:8080"
+    environment:
+      CAPLOG_LISTEN: ":8080"
+      DATABASE_URL: postgresql://caplog_app:${CAPLOG_APP_PASSWORD}@postgres:5432/caplog
+      CAPLOG_MIGRATE_URL: postgresql://caplog_owner:${CAPLOG_OWNER_PASSWORD}@postgres:5432/caplog
+      CAPLOG_SIGNING_KEY: /run/secrets/caplog_signing_key
+      CAPLOG_CHECKPOINTS: /checkpoints/checkpoints.jsonl
+      CAPLOG_TRUSTED_PROXIES: ${CAPLOG_TRUSTED_PROXIES:-}
+    secrets:
+      - caplog_signing_key
+    volumes:
+      - caplog-checkpoints:/checkpoints
+    tmpfs:
+      - /tmp
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "caplog", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "1m"
+        max-file: "3"
+    networks:
+      - caplog
+
+  postgres:
+    image: postgres:17.12
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: caplog
+      CAPLOG_OWNER_PASSWORD: ${CAPLOG_OWNER_PASSWORD:?Set CAPLOG_OWNER_PASSWORD in .env}
+      CAPLOG_APP_PASSWORD: ${CAPLOG_APP_PASSWORD:?Set CAPLOG_APP_PASSWORD in .env}
+    volumes:
+      - caplog-pg:/var/lib/postgresql/data
+      - ./deploy/postgres/init-roles.sh:/docker-entrypoint-initdb.d/01-roles.sh:ro
+    # The official image must start as root so it can set ownership on a new
+    # volume, then it switches to uid 999 before the database process runs.
+    # Dropping every capability and adding these back is what that switch needs.
+    cap_drop: [ALL]
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 128mb
+    pids_limit: 200
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "caplog"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "1m"
+        max-file: "3"
+    networks:
+      - caplog
+
+secrets:
+  caplog_signing_key:
+    file: ${CAPLOG_SIGNING_KEY_FILE:-./secrets/caplog_signing.key}
+
+networks:
+  # No route to other networks. The published app port is still reachable on the host.
+  caplog:
+    internal: true
+
+volumes:
+  caplog-pg:
+  caplog-checkpoints:

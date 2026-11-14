@@ -1,0 +1,7 @@
+fastapi==0.162.7
+uvicorn==0.54.0
+psycopg[binary]==3.3.9
+psycopg-binary==3.3.9
+psycopg-pool==3.3.3
+cryptography==50.0.2
+fpdf2==2.9.0

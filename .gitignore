@@ -1,0 +1,16 @@
+# Build output and local data. Never commit keys or a live database.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.db
+*.db-wal
+*.db-shm
+*.key
+*.key.pub
+*.pem
+checkpoints*.jsonl
+/data/
+/secrets/
+.env

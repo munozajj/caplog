@@ -1,0 +1,117 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "caplog.fullname" . }}
+  labels: {{- include "caplog.labels" . | nindent 4 }}
+spec:
+  # One pod. The checkpoint file is on a ReadWriteOnce volume.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {{- include "caplog.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "caplog.selectorLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: caplog
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve"]
+          env:
+            - name: CAPLOG_LISTEN
+              value: ":8080"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "caplog.dbSecret" . }}
+                  key: {{ ternary "DATABASE_URL" .Values.externalDatabase.urlKey .Values.database.enabled }}
+            - name: CAPLOG_MIGRATE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "caplog.dbSecret" . }}
+                  key: {{ ternary "CAPLOG_MIGRATE_URL" .Values.externalDatabase.migrateUrlKey .Values.database.enabled }}
+            - name: CAPLOG_CHECKPOINTS
+              value: /checkpoints/checkpoints.jsonl
+            - name: CAPLOG_CHECKPOINT_EVERY
+              value: {{ .Values.checkpoint.every | quote }}
+            - name: CAPLOG_CHECKPOINT_INTERVAL
+              value: {{ .Values.checkpoint.interval | quote }}
+            - name: CAPLOG_MAX_IMPORT_MB
+              value: {{ .Values.maxImportMb | quote }}
+            {{- if .Values.trustedProxies }}
+            - name: CAPLOG_TRUSTED_PROXIES
+              value: {{ .Values.trustedProxies | quote }}
+            {{- end }}
+            {{- if .Values.signingKey.existingSecret }}
+            - name: CAPLOG_SIGNING_KEY
+              value: /run/secrets/caplog/{{ .Values.signingKey.key }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: checkpoints
+              mountPath: /checkpoints
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.signingKey.existingSecret }}
+            - name: signing-key
+              mountPath: /run/secrets/caplog
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: checkpoints
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.checkpoints.existingClaim | default (printf "%s-checkpoints" (include "caplog.fullname" .)) }}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.signingKey.existingSecret }}
+        - name: signing-key
+          secret:
+            secretName: {{ .Values.signingKey.existingSecret }}
+            defaultMode: 0444
+            items:
+              - key: {{ .Values.signingKey.key }}
+                path: {{ .Values.signingKey.key }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
