@@ -9,18 +9,63 @@ spec:
     matchLabels: {{- include "caplog.selectorLabels" . | nindent 6 }}
   policyTypes:
     - Ingress
-    {{- if .Values.networkPolicy.denyEgress }}
     - Egress
-    {{- end }}
   ingress:
-    # Only the app port is reachable.
     - ports:
         - port: 8080
           protocol: TCP
       {{- with .Values.networkPolicy.from }}
       from: {{- toYaml . | nindent 8 }}
       {{- end }}
-  {{- if .Values.networkPolicy.denyEgress }}
-  egress: []   # CapLog makes no outbound connections
-  {{- end }}
+  egress:
+    {{- if .Values.database.enabled }}
+    - to:
+        - podSelector:
+            matchLabels: {{- include "caplog.postgresSelector" . | nindent 14 }}
+      ports:
+        - port: 5432
+          protocol: TCP
+    {{- else if .Values.externalDatabase.cidr }}
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.externalDatabase.cidr | quote }}
+      ports:
+        - port: {{ .Values.externalDatabase.port }}
+          protocol: TCP
+    {{- end }}
+    # Name resolution for the Postgres Service. Nothing else is allowed out.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dnsNamespace }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- if .Values.database.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "caplog.fullname" . }}-postgres
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: postgres
+spec:
+  podSelector:
+    matchLabels: {{- include "caplog.postgresSelector" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {{- include "caplog.selectorLabels" . | nindent 14 }}
+      ports:
+        - port: 5432
+          protocol: TCP
+  egress: []
+{{- end }}
 {{- end }}

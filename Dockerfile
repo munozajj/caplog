@@ -1,46 +1,35 @@
 # syntax=docker/dockerfile:1
-#
-# CapLog container image.
-# Stage 1 compiles a static Go binary; stage 2 copies just that binary into a
-# "distroless" image: no shell, no package manager, runs as a non-root user.
+# Slim Python image. No compilers, no package index left in the layers that
+# matter, and the process runs as uid 65532.
 
-# ---- build stage ----
-# --platform=$BUILDPLATFORM: compile natively and cross-compile for the target
-# (fast, no emulation needed for arm64 builds).
-FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
-ARG TARGETOS
-ARG TARGETARCH
+FROM python:3.13.18-slim-bookworm
+
 ARG VERSION=dev
-WORKDIR /src
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    CAPLOG_VERSION=${VERSION} \
+    CAPLOG_LISTEN=:8080 \
+    CAPLOG_CHECKPOINTS=/checkpoints/checkpoints.jsonl \
+    HOME=/tmp
 
-# Download dependencies first so this layer is cached between builds.
-COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
+RUN groupadd --gid 65532 caplog \
+    && useradd --uid 65532 --gid 65532 --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin caplog \
+    && mkdir -p /checkpoints \
+    && chown 65532:65532 /checkpoints
 
-COPY . .
-# CGO_ENABLED=0 -> fully static binary (the SQLite driver is pure Go).
-# -s -w strips debug info to keep the image small.
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/caplog . \
- && mkdir -p /out/data /out/checkpoints
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt \
+    && rm -rf /root/.cache
+COPY caplog /app/caplog
+COPY static /app/static
+RUN printf '%s\n' '#!/bin/sh' 'exec python -m caplog "$@"' > /usr/local/bin/caplog \
+    && chmod 755 /usr/local/bin/caplog
 
-# ---- runtime stage ----
-FROM gcr.io/distroless/static-debian13:nonroot
-COPY --from=build /out/caplog /caplog
-# Empty mount points owned by the nonroot user (uid 65532), so new Docker
-# volumes start out writable by the app.
-COPY --from=build --chown=65532:65532 /out/data /data
-COPY --from=build --chown=65532:65532 /out/checkpoints /checkpoints
-
-ENV CAPLOG_LISTEN=:8080 \
-    CAPLOG_DB=/data/caplog.db \
-    CAPLOG_CHECKPOINTS=/checkpoints/checkpoints.jsonl
 USER 65532:65532
 EXPOSE 8080
-VOLUME ["/data", "/checkpoints"]
-# No curl/wget in the image, so the binary checks itself.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["/caplog", "healthcheck"]
-ENTRYPOINT ["/caplog"]
+VOLUME ["/checkpoints"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["caplog", "healthcheck"]
+ENTRYPOINT ["caplog"]
 CMD ["serve"]
