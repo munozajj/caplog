@@ -46,6 +46,11 @@ const LABELS = {
   export_keep: "Backup files to keep",
 };
 
+function readCsrf() {
+  const match = document.cookie.match(/(?:^|; )caplog_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
 async function post(url, body) {
   const res = await fetch(url, {
     method: "POST",
@@ -95,8 +100,6 @@ function field(key, value) {
 
 function draw(data) {
   admin = data;
-  $("gate").hidden = true;
-  $("panel").hidden = false;
   const form = $("settings-form");
   form.textContent = "";
   const title = document.createElement("h2");
@@ -156,27 +159,31 @@ function draw(data) {
 }
 
 async function act(body) {
-  await post("api/admin/users", body);
-  draw(await (await fetch("api/admin/state")).json());
+  await post("/admin/api/users", body);
+  draw(await (await fetch("/admin/api/state")).json());
 }
 
 async function load() {
-  const state = await (await fetch("api/state")).json();
-  csrf = state.csrf;
-  const res = await fetch("api/admin/state");
-  if (res.status === 403) return;
+  csrf = readCsrf();
+  const res = await fetch("/admin/api/state");
+  if (res.status === 401) {
+    location.href = "/admin/login";
+    return;
+  }
+  if (!res.ok) {
+    document.body.textContent = "The admin page could not be loaded.";
+    return;
+  }
   draw(await res.json());
 }
 
-$("login-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
+$("sign-out").onclick = async () => {
   try {
-    await post("api/login", { username: $("user").value.trim(), password: $("pass").value });
-    await load();
-  } catch (err) {
-    $("login-msg").textContent = err.message;
+    await post("/admin/logout", {});
+  } finally {
+    location.href = "/admin/login";
   }
-});
+};
 
 $("settings-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -185,9 +192,9 @@ $("settings-form").addEventListener("submit", async (event) => {
   try {
     for (const input of $("settings-form").querySelectorAll("input, select, textarea")) {
       const key = input.id.slice(2);
-      if (admin.settings[key] !== input.value) await post("api/admin/settings", { key, value: input.value });
+      if (admin.settings[key] !== input.value) await post("/admin/api/settings", { key, value: input.value });
     }
-    draw(await (await fetch("api/admin/state")).json());
+    draw(await (await fetch("/admin/api/state")).json());
     msg.textContent = "Saved.";
   } catch (err) {
     msg.textContent = err.message;
@@ -212,9 +219,9 @@ $("user-form").addEventListener("submit", async (event) => {
 });
 
 async function saveCert(body) {
-  const result = await post("api/admin/certificate", body);
+  const result = await post("/admin/api/certificate", body);
   alert((result.warning ? result.warning + " " : "") + "Saved. Restart CapLog before HTTPS uses this certificate. Expires " + result.expires);
-  draw(await (await fetch("api/admin/state")).json());
+  draw(await (await fetch("/admin/api/state")).json());
 }
 
 $("cert-generate").onclick = () => saveCert({ action: "generate", hostname: admin.settings.site_fqdn }).catch((err) => alert(err.message));

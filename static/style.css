@@ -28,8 +28,8 @@ body {
 }
 
 header {
-  background: #fff;
-  border-bottom: 1px solid var(--line);
+  background: transparent;
+  border-bottom: 0;
 }
 
 .header-inner {
@@ -81,17 +81,17 @@ h1 {
 main {
   max-width: 760px;
   margin: 0 auto;
-  padding: 1rem;
+  padding: 1.75rem 1.15rem 3.5rem;
   display: flex;
   flex-direction: column;
-  gap: .75rem;
+  gap: 1.5rem;
 }
 
 .card, .entry {
   background: var(--card);
-  border-radius: 12px;
-  box-shadow: 0 1px 2px rgba(26, 31, 43, .05), 0 8px 24px rgba(26, 31, 43, .05);
-  padding: 1rem 1.1rem;
+  border-radius: 16px;
+  box-shadow: none;
+  padding: 1.15rem 1.25rem;
 }
 
 label {
@@ -342,10 +342,66 @@ textarea { min-height: 7rem; resize: vertical; }
 select { width: 100%; font: inherit; padding: .45rem .55rem; border-radius: 8px; border: 1px solid #d5dae3; background: #f8f9fc; }
 .admin-banner { background: #fdecec; color: #8f1d1d; font-weight: 700; }
 
+.unconfigured {
+  min-height: 70vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.unconfigured p {
+  max-width: 26rem;
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.narrow { max-width: 32rem; }
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: .25rem 0 0;
+}
+
+.menu-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem .6rem;
+  align-items: center;
+}
+
+.text-btn {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  padding: .2rem .15rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.help-btn {
+  color: var(--muted);
+  font-weight: 650;
+  min-width: 2rem;
+  background: transparent;
+  border: 0;
+  padding: .2rem .35rem;
+}
+
+.example-toggle { margin: 0; }
+
 @media (max-width: 800px) {
   .layout.pos-left, .layout.pos-right { flex-direction: column; }
   .layout.pos-left .post-col, .layout.pos-right .post-col { width: auto; }
 }
 
-header .header-inner, main { max-width: 1100px; }
+header .header-inner, main { max-width: 720px; }
+
+@media (max-width: 600px) {
+  .menu-row .btn { padding: .45rem .6rem; }
+  main { padding: 1.25rem .9rem 2.5rem; }
+  h1 { font-size: 1.25rem; }
+}
 

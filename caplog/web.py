@@ -21,6 +21,7 @@ from caplog.errors import (
     ErrNoTitle,
     ErrRateLimited,
     ErrTitleIsSet,
+    ErrUnauthenticated,
     ValidationError,
 )
 from caplog.jsonutil import dumps
@@ -134,6 +135,8 @@ def lifespan(hub: Hub):
 
 
 def _fail(exc: Exception) -> Response:
+    if isinstance(exc, ErrUnauthenticated):
+        return _error(str(exc), 401)
     if isinstance(exc, ValidationError):
         return _error(str(exc), 400)
     if isinstance(exc, (ErrTitleIsSet, ErrNoTitle)):
@@ -214,6 +217,47 @@ def _clear_session(response: Response, request: Request) -> None:
     response.delete_cookie("caplog_session", path="/", samesite="lax", secure=_secure(request), httponly=True)
 
 
+def _admin_cookie(response: Response, request: Request, token: str) -> None:
+    response.set_cookie(
+        "caplog_admin",
+        token,
+        httponly=True,
+        samesite="lax",
+        secure=_secure(request),
+        path="/admin",
+        max_age=12 * 3600,
+    )
+
+
+def _clear_admin(response: Response, request: Request) -> None:
+    response.delete_cookie("caplog_admin", path="/admin", samesite="lax", secure=_secure(request), httponly=True)
+
+
+def _ready(store: Store) -> bool:
+    try:
+        store.title()
+    except ErrNoTitle:
+        return False
+    return store.user_count() > 0
+
+
+_NOT_READY_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CapLog</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="unconfigured">
+    <p>This logbook has not been configured by the administrator yet.</p>
+  </main>
+</body>
+</html>
+"""
+
+
 def _ip(request: Request, config: Config) -> str:
     return client_ip(
         _remote_host(request),
@@ -266,7 +310,11 @@ def create_app(store: Store, config: Config) -> FastAPI:
         target = _redirect_target(store, request)
         if target is not None:
             response = RedirectResponse(target, status_code=307)
-        elif request.method == "POST" and request.url.path.startswith("/api/"):
+        elif request.url.path.startswith("/api/") and not _ready(store):
+            response = _error("This logbook has not been configured by the administrator yet.", 409)
+        elif request.method == "POST" and (
+            request.url.path.startswith("/api/") or request.url.path.startswith("/admin")
+        ):
             if request.headers.get("x-caplog") != "1":
                 response = _error("missing X-CapLog: 1 header", 403)
             elif request.cookies.get("caplog_csrf", "") == "" or request.headers.get("x-csrf") != request.cookies.get("caplog_csrf"):
@@ -284,23 +332,52 @@ def create_app(store: Store, config: Config) -> FastAPI:
         response.headers["X-Frame-Options"] = "DENY"
         return response
 
+    def _html(request: Request, name: str) -> FileResponse:
+        response = FileResponse(
+            config.static_path / name,
+            media_type="text/html",
+            headers={"Cache-Control": "no-cache"},
+        )
+        _csrf_cookie(response, request)
+        return response
+
     @app.get("/")
-    def index():
-        return FileResponse(config.static_path / "index.html", media_type="text/html", headers={"Cache-Control": "no-cache"})
+    def index(request: Request):
+        if not _ready(store):
+            response = Response(
+                _NOT_READY_HTML,
+                media_type="text/html",
+                headers={"Cache-Control": "no-cache"},
+            )
+            _csrf_cookie(response, request)
+            return response
+        return _html(request, "index.html")
 
     @app.get("/verify")
-    def verify_page():
-        return FileResponse(config.static_path / "verify.html", media_type="text/html", headers={"Cache-Control": "no-cache"})
+    def verify_page(request: Request):
+        return _html(request, "verify.html")
+
+    @app.get("/admin/login")
+    def admin_login_page(request: Request):
+        if not _ready(store):
+            return RedirectResponse("/admin", status_code=303)
+        if _admin_user(request) is not None:
+            return RedirectResponse("/admin", status_code=303)
+        return _html(request, "admin-login.html")
 
     @app.get("/admin")
-    def admin_page():
-        return FileResponse(config.static_path / "admin.html", media_type="text/html", headers={"Cache-Control": "no-cache"})
+    def admin_page(request: Request):
+        if not _ready(store):
+            return _html(request, "admin-setup.html")
+        if _admin_user(request) is None:
+            return RedirectResponse("/admin/login", status_code=303)
+        return _html(request, "admin.html")
 
     @app.get("/display")
-    def display_page():
+    def display_page(request: Request):
         if store.settings().get("feature_display_page") != "true":
             return _error("the display page is turned off", 404)
-        return FileResponse(config.static_path / "display.html", media_type="text/html", headers={"Cache-Control": "no-cache"})
+        return _html(request, "display.html")
 
     @app.get("/healthz")
     def health():
@@ -313,10 +390,19 @@ def create_app(store: Store, config: Config) -> FastAPI:
     def _current(request: Request) -> dict | None:
         return store.session_user(request.cookies.get("caplog_session", ""))
 
-    def _admin(request: Request) -> dict:
-        user = _current(request)
+    def _admin_user(request: Request) -> dict | None:
+        token = request.cookies.get("caplog_admin", "")
+        if not token:
+            return None
+        user = store.session_user(token)
         if user is None or user["role"] != "admin":
-            raise ErrDenied("an admin sign-in is required")
+            return None
+        return user
+
+    def _admin(request: Request) -> dict:
+        user = _admin_user(request)
+        if user is None:
+            raise ErrUnauthenticated()
         return user
 
     def _clock_text() -> str:
@@ -389,7 +475,7 @@ def create_app(store: Store, config: Config) -> FastAPI:
         )
         return response
 
-    @app.post("/api/setup")
+    @app.post("/admin/setup")
     async def setup(request: Request):
         try:
             body = await _read_json(
@@ -433,6 +519,33 @@ def create_app(store: Store, config: Config) -> FastAPI:
         store.logout(request.cookies.get("caplog_session", ""))
         response = _json({"ok": True})
         _clear_session(response, request)
+        return response
+
+    @app.post("/admin/login")
+    async def admin_login(request: Request):
+        try:
+            body = await _read_json(request, 8 * 1024, {"username", "password"})
+            user, token = store.login(
+                str(body.get("username", "")),
+                str(body.get("password", "")),
+                _ip(request, config),
+            )
+        except (ValidationError, ErrDenied, ErrLocked) as exc:
+            return _fail(exc)
+        except Exception as exc:
+            return _fail(exc)
+        if user["role"] != "admin":
+            store.logout(token)
+            return _error("an admin account is required", 403)
+        response = _json(_public_user(user))
+        _admin_cookie(response, request, token)
+        return response
+
+    @app.post("/admin/logout")
+    def admin_logout(request: Request):
+        store.logout(request.cookies.get("caplog_admin", ""))
+        response = _json({"ok": True})
+        _clear_admin(response, request)
         return response
 
     @app.post("/api/entries")
@@ -603,7 +716,7 @@ def create_app(store: Store, config: Config) -> FastAPI:
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    @app.get("/api/admin/state")
+    @app.get("/admin/api/state")
     def admin_state(request: Request):
         try:
             _admin(request)
@@ -616,7 +729,7 @@ def create_app(store: Store, config: Config) -> FastAPI:
             cert["warning"] = "This certificate expires soon."
         return _json({"settings": settings, "users": store.list_users(), "certificate": cert})
 
-    @app.post("/api/admin/settings")
+    @app.post("/admin/api/settings")
     async def admin_settings(request: Request):
         try:
             _admin(request)
@@ -628,7 +741,7 @@ def create_app(store: Store, config: Config) -> FastAPI:
             return _fail(exc)
         return _json(record.to_dict())
 
-    @app.post("/api/admin/users")
+    @app.post("/admin/api/users")
     async def admin_users(request: Request):
         try:
             _admin(request)
@@ -661,7 +774,7 @@ def create_app(store: Store, config: Config) -> FastAPI:
             return _fail(exc)
         return _json({"ok": True})
 
-    @app.post("/api/admin/certificate")
+    @app.post("/admin/api/certificate")
     async def admin_certificate(request: Request):
         try:
             _admin(request)

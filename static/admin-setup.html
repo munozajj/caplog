@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Set up CapLog</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="narrow">
+    <form id="setup-form" class="card">
+      <h1>Set up the logbook</h1>
+      <div id="title-wrap">
+        <label for="title">Logbook title</label>
+        <input id="title" maxlength="200" autocomplete="off" required>
+        <p class="small">The title is set once and can never be changed.</p>
+      </div>
+      <label for="setup-user">Admin username</label>
+      <input id="setup-user" autocomplete="username" required>
+      <div class="names">
+        <div>
+          <label for="setup-first">First name</label>
+          <input id="setup-first" autocomplete="given-name" required>
+        </div>
+        <div>
+          <label for="setup-last">Last name</label>
+          <input id="setup-last" autocomplete="family-name" required>
+        </div>
+      </div>
+      <label for="setup-pass">Password</label>
+      <input id="setup-pass" type="password" autocomplete="new-password" required>
+      <p id="setup-msg" class="msg"></p>
+      <div class="form-row">
+        <button type="submit" class="btn btn-add">Create the logbook</button>
+      </div>
+      <p class="small">The first account is the master admin. An entry cannot be edited or deleted, including by an admin. This page can be completed only once.</p>
+    </form>
+  </main>
+  <script src="/static/admin-setup.js"></script>
+</body>
+</html>

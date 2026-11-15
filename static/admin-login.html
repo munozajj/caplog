@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin sign in - CapLog</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="narrow">
+    <form id="login-form" class="card">
+      <h1>Admin sign in</h1>
+      <p class="small">This sign-in is only for the admin pages. It does not sign you in on the logbook.</p>
+      <label for="user">Username</label>
+      <input id="user" autocomplete="username" required>
+      <label for="pass">Password</label>
+      <input id="pass" type="password" autocomplete="current-password" required>
+      <p id="login-msg" class="msg"></p>
+      <div class="form-row">
+        <button class="btn btn-add" type="submit">Sign in</button>
+        <button type="button" id="help-btn" class="btn help-btn" title="Help">?</button>
+      </div>
+    </form>
+  </main>
+  <aside id="help" class="help" hidden></aside>
+  <script src="/static/admin-login.js"></script>
+</body>
+</html>
