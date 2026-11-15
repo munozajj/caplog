@@ -25,7 +25,7 @@ CapLog is a general-purpose shared logbook. People open it in a browser and writ
 - 2026-11-14: On a new checkout, create the signing key with `docker run` before `docker compose up`, then set the key file mode to 0444 so the container user 65532 can read it. [PR #4](https://github.com/munozajj/caplog/pull/4)
 - 2026-11-14: The app is on the internal `caplog` network and on a non-internal `web` network, so Docker publishes the app port. PostgreSQL stays only on `caplog`. [PR #5](https://github.com/munozajj/caplog/pull/5)
 - 2026-11-14: Local accounts use argon2id. A system entry uses record kind `system`. The first admin cannot be disabled or changed to a normal user. A new TLS certificate is used only after the process starts again. Guest names, when the rule is on, are letters, spaces, apostrophes, and hyphens. The in-app time check and the Helm UDP 123 rule stay separate. [PR #7](https://github.com/munozajj/caplog/pull/7)
-- 2026-11-15: The user logbook stays at `/`. Administration and first-run setup stay at `/admin`, with sign-in at `/admin/login`. The logbook page does not link to `/admin`. The admin cookie is `caplog_admin` and its path is `/admin`. A logbook session cannot open `/admin`, and an admin session does not sign in the logbook. Setup can run once. Before that, `/` shows only "This logbook has not been configured by the administrator yet." and user API calls are refused.
+- 2026-11-15: The user logbook stays at `/`. Administration and first-run setup stay at `/admin`, with sign-in at `/admin/login`. The logbook page does not link to `/admin`. The admin cookie is `caplog_admin` and its path is `/admin`. A logbook session cannot open `/admin`, and an admin session does not sign in the logbook. Setup can run once. Before that, `/` shows only "This logbook has not been configured by the administrator yet." and user API calls are refused. [PR #8](https://github.com/munozajj/caplog/pull/8)
 
 ## 4. Tasks
 
@@ -135,7 +135,7 @@ CapLog is a general-purpose shared logbook. People open it in a browser and writ
 
 ## 6. Session log
 
-- 2026-11-15: Separated the admin site from the user logbook. Setup and admin sign-in are only at `/admin`. The user page does not link there, and the two sessions do not cross. Pull request link pending.
+- 2026-11-15: Separated the admin site from the user logbook. Setup and admin sign-in are only at `/admin`. The user page does not link there, and the two sessions do not cross. [PR #8](https://github.com/munozajj/caplog/pull/8)
 - 2026-11-14: Added accounts, the master admin, logbook options, and the extra features in the task list above. [PR #7](https://github.com/munozajj/caplog/pull/7)
 - 2026-11-14: Added this project memory and the instruction to read it at the start of every task. No application code changed. [PR #6](https://github.com/munozajj/caplog/pull/6)
 - 2026-11-14: Published the app port on a non-internal network and left PostgreSQL on the internal network only. [PR #5](https://github.com/munozajj/caplog/pull/5)
