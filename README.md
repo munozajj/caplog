@@ -8,13 +8,13 @@ One logbook per deployment. Open it by name or by IP on port 8080. HTTPS, when e
 
 CapLog is a record people write while work is in progress, and then keep. It is a general-purpose logbook. It is not limited to one kind of work.
 
-Deploy it, finish the first-time setup, and give people the address. The first visit creates the title and the master admin account in the same step. After that, guests can add entries, accounts can add entries, or both, depending on `post_mode`. After an entry is saved, no one can change it and no one can delete it. The text, the name, the time, and the address it came from stay as they were written. That is the history, and it is also the archive.
+Deploy it, then open `/admin` and finish the first-time setup. That page creates the title and the master admin account in the same step. The logbook page does not link to `/admin`. Until setup is finished, `/` shows only "This logbook has not been configured by the administrator yet." and the user API refuses posts. After that, guests can add entries, accounts can add entries, or both, depending on `post_mode`. After an entry is saved, no one can change it and no one can delete it. The text, the name, the time, and the address it came from stay as they were written. That is the history, and it is also the archive.
 
 Several people can keep the same page open. Each person writes what they just did. The new entry appears for everyone, with the newest entry at the top. The list is in order, so you can see who did what, and what was written immediately before a problem.
 
 One example is a network team making infrastructure changes. The team keeps the log open. Each person writes what they just changed, so everyone sees it. When something breaks, the log shows who did what, in order, right before it broke. That is only an example of how a team can use the log. The logbook itself is not specific to networking or to information technology.
 
-- The title is typed once, on first use, together with the master admin account, and cannot be changed.
+- The title is typed once, at `/admin`, together with the master admin account, and cannot be changed. Setup can be completed only once.
 - A guest enters a first name and a last name. A signed-in account is not asked for a name. The name comes from the account. Each entry shows Account and the username, or Guest.
 - Each entry has up to `max_entry_length` characters of text. The default is 500. CapLog adds the entry number, the time (UTC, shown in the viewer's local time unless the viewer chooses UTC), and the poster's IP address.
 - New entries show up for everyone immediately (Server-Sent Events). Newest entries are at the top.
@@ -160,7 +160,7 @@ The container runs as uid 65532 and must be able to read the key file. PowerShel
 
 `keygen` writes `secrets/caplog_signing.key` (mode 0600) and `secrets/caplog_signing.key.pub`. It refuses to overwrite an existing file. The `chmod` step then makes the private key readable by the container user. Copy the `.pub` file off this computer. The private key stays in `secrets/` and is passed to the container as a Docker secret. It is not in the image.
 
-Open `http://localhost:8080/`. The first visit asks for the logbook title and the master admin account. Later visits can sign in, or post as a guest when `post_mode` allows it.
+Open `http://localhost:8080/admin` to create the logbook title and the master admin account. Until that is done, `http://localhost:8080/` shows only "This logbook has not been configured by the administrator yet." The logbook page does not link to `/admin`. After setup, sign in at `http://localhost:8080/admin/login`.
 
 To use another host port, set `CAPLOG_PORT` in `.env`. HTTPS, when the admin turns it on, is published as `CAPLOG_HTTPS_PORT` (default 8443). To listen on one address only, set `CAPLOG_BIND`.
 
@@ -243,9 +243,10 @@ If an Ingress is in front of CapLog, leave in-app TLS off and set `trustedProxie
 
 ## Using it
 
-- The first page sets the title and the master admin account. Confirm it. The title cannot be changed. The first admin cannot be disabled or changed to a normal user.
+- Open `/admin` once to set the title and the master admin account. After that, `/admin` sends a signed-out visitor to `/admin/login`. The title cannot be changed. The first admin cannot be disabled or changed to a normal user.
+- The logbook page shows the title, the post box, and the entries. Search, filters, display settings, export, import, expand all, collapse all, and sign-in start inside the Menu control. The `?` button stays visible. The example entry stays behind Show example.
 - A guest adds an entry with a first name, a last name, and the text. A signed-in account is not asked for a name. The counter uses the same character count as the server. Add asks you to confirm: "This entry is permanent and can never be edited or deleted."
-- An example entry sits under the post box. The text is "The west door was locked and the lights were left on for the next person." It is not stored.
+- An example entry sits behind Show example, under the post box. The text is "The west door was locked and the lights were left on for the next person." It is not stored.
 - The post box position (`post_box`) can be top, bottom, left, right, or center. The entries use the remaining space, so the post box does not sit on top of them. That choice is display only.
 - Times are stored in UTC. The page can show local time or UTC, and a 12-hour or 24-hour clock. The stored UTC value is the tooltip.
 - Export PDF or Export JSON downloads the log. A system entry is written first and is included in the file. `site_fqdn` is included in the PDF header when it is set.
@@ -254,7 +255,7 @@ If an Ingress is in front of CapLog, leave in-app TLS off and set `trustedProxie
 
 ## Accounts
 
-Accounts are stored in this deployment only. There is no external identity provider. Passwords are hashed with argon2id (`argon2-cffi`). The session cookie `caplog_session` is HttpOnly and SameSite=Lax. It is marked Secure only when the request is already HTTPS. Sessions last 12 hours. Sign-in is locked after `login_max_failures` failures in `login_lock_minutes` (defaults 5 and 15). The lock applies to that username and to that IP address.
+Accounts are stored in this deployment only. There is no external identity provider. Passwords are hashed with argon2id (`argon2-cffi`). The logbook session cookie `caplog_session` is HttpOnly and SameSite=Lax, and its path is `/`. The admin session cookie `caplog_admin` is HttpOnly and SameSite=Lax, and its path is `/admin`, so the browser sends it only to `/admin`. Signing in on the logbook does not open `/admin`. Signing in at `/admin/login` does not sign you in on the logbook. Only an account with the admin role can complete the admin sign-in. A cookie is marked Secure only when the request is already HTTPS. Sessions last 12 hours. Sign-in is locked after `login_max_failures` failures in `login_lock_minutes` (defaults 5 and 15). Admin sign-ins and admin sign-in failures use that same lock. The lock applies to that username and to that IP address.
 
 Every form post also sends `X-CapLog: 1` and `X-CSRF`. The CSRF token is the cookie `caplog_csrf`, which is not HttpOnly, and the header `X-CSRF` must match it.
 
@@ -264,7 +265,7 @@ When `guest_name_rules` is true, a guest name is required, 1 to 60 characters, a
 
 ## Admin
 
-`/admin` is for admin accounts. The page states that an admin cannot edit, hide, or delete an entry. Every settings change and every account change is a permanent system entry. The name on that entry is CapLog System. The body names the setting and the new value. It does not contain passwords, session tokens, or certificate private keys.
+`/admin` is the only admin address. The logbook page does not link to it. Before setup, `/admin` is the setup form. After setup, a signed-out visit to `/admin` redirects to `/admin/login`. Admin API routes are under `/admin/api/`. A call without an admin session returns HTTP 401. The page states that an admin cannot edit, hide, or delete an entry. Every settings change and every account change is a permanent system entry. The name on that entry is CapLog System. The body names the setting and the new value. It does not contain passwords, session tokens, or certificate private keys.
 
 These settings are stored in the database. Display choices do not change a stored record.
 

@@ -12,22 +12,14 @@
       <h1>CapLog admin</h1>
       <div class="header-actions">
         <a class="btn" href="/">Logbook</a>
+        <button type="button" id="sign-out" class="btn">Sign out</button>
         <button type="button" id="help-btn" class="btn help-btn">?</button>
       </div>
     </div>
   </header>
   <main>
     <p class="card admin-banner">An admin cannot edit, hide, or delete an entry. Every change on this page is written as a permanent system entry. Passwords and certificate keys are not written into the log.</p>
-    <section id="gate" class="card">
-      <form id="login-form">
-        <label for="user">Username</label>
-        <input id="user" autocomplete="username" required>
-        <label for="pass">Password</label>
-        <input id="pass" type="password" autocomplete="current-password" required>
-        <div class="form-row"><button class="btn btn-add" type="submit">Sign in</button><span id="login-msg" class="msg"></span></div>
-      </form>
-    </section>
-    <section id="panel" hidden>
+    <section id="panel">
       <form id="settings-form" class="card"></form>
       <form id="user-form" class="card">
         <h2>Accounts</h2>

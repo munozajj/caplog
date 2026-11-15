@@ -23,7 +23,7 @@ def _client(store, trusted=None, client=("127.0.0.1", 1234)):
 
 
 def _headers(client):
-    client.get("/api/state")
+    client.get("/admin")
     token = client.cookies.get("caplog_csrf")
     return {"X-CapLog": "1", "X-CSRF": token}
 
@@ -31,7 +31,7 @@ def _headers(client):
 def _setup(client, title="Watch Log"):
     headers = _headers(client)
     made = client.post(
-        "/api/setup",
+        "/admin/setup",
         headers=headers,
         json={
             "title": title,
@@ -50,7 +50,7 @@ def test_missing_header_limit_and_title(db):
         made, headers = _setup(client)
         assert made.status_code == 201
         again = client.post(
-            "/api/setup",
+            "/admin/setup",
             headers=headers,
             json={
                 "title": "Other",

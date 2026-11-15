@@ -140,6 +140,7 @@ function cardFor(record) {
       event.stopPropagation();
       corrects = record.seq;
       $("correcting").hidden = false;
+      $("clear-correct").hidden = false;
       $("correcting").textContent = "This new entry will be linked to #" + record.seq + ". The original entry is not changed.";
       $("text").focus();
     };
@@ -225,6 +226,7 @@ function setupEntryForm() {
       text.value = "";
       corrects = null;
       $("correcting").hidden = true;
+      $("clear-correct").hidden = true;
       update();
     } catch (err) {
       msg.textContent = err.message;
@@ -233,7 +235,11 @@ function setupEntryForm() {
       text.focus();
     }
   });
-  $("clear-correct").onclick = () => { corrects = null; $("correcting").hidden = true; };
+  $("clear-correct").onclick = () => {
+    corrects = null;
+    $("correcting").hidden = true;
+    $("clear-correct").hidden = true;
+  };
 }
 
 function readDisplay() {
@@ -337,29 +343,14 @@ async function openHelp() {
 }
 
 async function start() {
-  state = await (await fetch("api/state")).json();
-  csrf = state.csrf;
-  maxChars = state.max_text_chars || 500;
-  if (state.setup_needed || state.admin_needed) {
-    $("setup").hidden = false;
-    $("title-wrap").hidden = !state.setup_needed;
-    $("setup-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const title = $("title").value.trim();
-      if (state.setup_needed && !title) return;
-      const ok = await confirmDialog("The title is permanent and can never be changed. The admin account cannot edit or delete entries.", title);
-      if (!ok) return;
-      try {
-        await post("api/setup", {
-          title, username: $("setup-user").value.trim(),
-          first_name: $("setup-first").value.trim(), last_name: $("setup-last").value.trim(),
-          password: $("setup-pass").value,
-        });
-        location.reload();
-      } catch (err) { alert(err.message); }
-    });
+  const stateRes = await fetch("api/state");
+  if (!stateRes.ok) {
+    document.body.textContent = "This logbook has not been configured by the administrator yet.";
     return;
   }
+  state = await stateRes.json();
+  csrf = state.csrf;
+  maxChars = state.max_text_chars || 500;
   const defaults = {};
   ["show_number","show_name","show_time","show_ip","show_poster","show_tags","time_zone","clock","post_box"].forEach((key) => {
     defaults[key] = state.settings[key];
@@ -372,7 +363,6 @@ async function start() {
     }
   }
   writeDisplay(Object.assign({}, defaults, chosen));
-  $("actions").hidden = false;
   $("log").hidden = false;
   $("log-title").textContent = state.title;
   document.title = state.title + " - CapLog";
@@ -391,6 +381,16 @@ async function start() {
     if (file) doImport(file).catch((err) => alert(err.message));
   };
   $("help-btn").onclick = () => openHelp().catch((err) => alert(err.message));
+  $("menu-btn").onclick = () => {
+    const menu = $("menu");
+    menu.hidden = !menu.hidden;
+    $("menu-btn").setAttribute("aria-expanded", menu.hidden ? "false" : "true");
+  };
+  $("show-example").onclick = () => {
+    const example = $("example");
+    example.hidden = !example.hidden;
+    $("show-example").textContent = example.hidden ? "Show example" : "Hide example";
+  };
   $("sign-btn").onclick = async () => {
     if (state.user) {
       await post("api/logout", {});

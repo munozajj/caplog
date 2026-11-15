@@ -23,10 +23,10 @@ def _open(store, tmp_path):
     from starlette.testclient import TestClient
 
     client = TestClient(app)
-    client.get("/api/state")
+    client.get("/admin")
     headers = {"X-CapLog": "1", "X-CSRF": client.cookies.get("caplog_csrf")}
     made = client.post(
-        "/api/setup",
+        "/admin/setup",
         headers=headers,
         json={
             "title": "Watch Log",
@@ -46,10 +46,16 @@ def _login(client, headers, username="ada", password="correct horse battery"):
     return res
 
 
+def _admin_login(client, headers, username="ada", password="correct horse battery"):
+    res = client.post("/admin/login", headers=headers, json={"username": username, "password": password})
+    assert res.status_code == 200
+    return res
+
+
 def test_login_lockout_and_admin_routes(db, tmp_path):
     client, headers = _open(db["store"], tmp_path)
-    blocked = client.get("/api/admin/state")
-    assert blocked.status_code == 403
+    blocked = client.get("/admin/api/state")
+    assert blocked.status_code == 401
     for _ in range(4):
         bad = client.post("/api/login", headers=headers, json={"username": "ada", "password": "not-the-password"})
         assert bad.status_code == 403
@@ -63,8 +69,9 @@ def test_login_lockout_and_admin_routes(db, tmp_path):
 def test_post_modes_names_and_corrections(db, tmp_path):
     store = db["store"]
     client, headers = _open(store, tmp_path)
+    _admin_login(client, headers)
     _login(client, headers)
-    denied = client.post("/api/admin/settings", headers=headers, json={"key": "post_mode", "value": "accounts"})
+    denied = client.post("/admin/api/settings", headers=headers, json={"key": "post_mode", "value": "accounts"})
     assert denied.status_code == 200
     posted = client.post("/api/entries", headers=headers, json={"text": "from the account"})
     assert posted.status_code == 201
@@ -94,9 +101,10 @@ def test_post_modes_names_and_corrections(db, tmp_path):
 def test_rate_limit_and_display_does_not_change_records(db, tmp_path):
     store = db["store"]
     client, headers = _open(store, tmp_path)
+    _admin_login(client, headers)
     _login(client, headers)
-    assert client.post("/api/admin/settings", headers=headers, json={"key": "feature_rate_limit", "value": "true"}).status_code == 200
-    assert client.post("/api/admin/settings", headers=headers, json={"key": "rate_limit_count", "value": "2"}).status_code == 200
+    assert client.post("/admin/api/settings", headers=headers, json={"key": "feature_rate_limit", "value": "true"}).status_code == 200
+    assert client.post("/admin/api/settings", headers=headers, json={"key": "rate_limit_count", "value": "2"}).status_code == 200
     assert client.post("/api/entries", headers=headers, json={"text": "one"}).status_code == 201
     second = client.post("/api/entries", headers=headers, json={"text": "two"})
     assert second.status_code == 201
@@ -112,9 +120,9 @@ def test_rate_limit_and_display_does_not_change_records(db, tmp_path):
 
 def test_certificate_upload_validation(db, tmp_path):
     client, headers = _open(db["store"], tmp_path)
-    _login(client, headers)
+    _admin_login(client, headers)
     bad = client.post(
-        "/api/admin/certificate",
+        "/admin/api/certificate",
         headers=headers,
         json={"action": "upload", "certificate": "nope", "key": "nope"},
     )
@@ -122,13 +130,13 @@ def test_certificate_upload_validation(db, tmp_path):
     cert_pem, key_pem, _expires = generate_self_signed("log.example")
     _other, other_key, _other_exp = generate_self_signed("other.example")
     mismatch = client.post(
-        "/api/admin/certificate",
+        "/admin/api/certificate",
         headers=headers,
         json={"action": "upload", "certificate": cert_pem.decode(), "key": other_key.decode()},
     )
     assert mismatch.status_code == 400
     good = client.post(
-        "/api/admin/certificate",
+        "/admin/api/certificate",
         headers=headers,
         json={"action": "upload", "certificate": cert_pem.decode(), "key": key_pem.decode()},
     )

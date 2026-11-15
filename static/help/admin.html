@@ -1,5 +1,7 @@
 <h2>Admin</h2>
-<p>This page is only for admin accounts. An admin cannot edit, hide, or delete an entry. Every settings change and every account change is a permanent system entry. Passwords, session tokens, and certificate private keys are never written into that entry.</p>
+<p>This page is only for admin accounts. Open it at /admin. Sign in at /admin/login. An admin cannot edit, hide, or delete an entry. Every settings change and every account change is a permanent system entry. Passwords, session tokens, and certificate private keys are never written into that entry.</p>
+<p>The logbook page does not link here. Signing in on the logbook does not open these pages, and signing in here does not sign you in on the logbook. The admin session cookie is <code>caplog_admin</code>. Its path is /admin. A request without that session returns HTTP 401. Only an account with the admin role, including the master admin, can sign in here. Failed admin sign-ins count toward the same lockout as logbook sign-ins.</p>
+<p>Before the logbook is configured, /admin shows the setup form. That form sets the title and the master admin account, and it can be completed only once. Until then, the logbook address shows only the message "This logbook has not been configured by the administrator yet." and user requests are refused.</p>
 <h2>Settings</h2>
 <ul>
   <li><code>post_mode</code>: both, guests, or accounts.</li>

@@ -24,6 +24,11 @@ class ErrDenied(CaplogError):
         super().__init__(message)
 
 
+class ErrUnauthenticated(ErrDenied):
+    def __init__(self) -> None:
+        super().__init__("an admin sign-in is required")
+
+
 class ErrLocked(CaplogError):
     def __init__(self) -> None:
         super().__init__("this account is locked after repeated failed sign-in attempts")

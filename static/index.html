@@ -10,8 +10,19 @@
   <header>
     <div class="header-inner">
       <h1 id="log-title">CapLog</h1>
-      <div class="header-actions" id="actions" hidden>
+      <div class="header-actions">
+        <button type="button" id="menu-btn" class="btn text-btn" aria-expanded="false" aria-controls="menu">Menu</button>
+        <button type="button" id="help-btn" class="btn help-btn" title="Help">?</button>
+      </div>
+    </div>
+  </header>
+  <div id="clock-banner" class="banner" hidden></div>
+  <div id="notice" class="banner notice" hidden></div>
+  <main>
+    <section id="menu" class="menu" hidden>
+      <div class="menu-row">
         <span id="live" class="live off"><i></i> Live</span>
+        <button type="button" id="sign-btn" class="btn">Sign in</button>
         <button type="button" id="expand-all" class="btn">Expand all</button>
         <button type="button" id="collapse-all" class="btn">Collapse all</button>
         <button type="button" id="export-pdf" class="btn">Export PDF</button>
@@ -19,42 +30,46 @@
         <button type="button" id="import-btn" class="btn">Import</button>
         <a class="btn" href="/verify">Verify</a>
         <a class="btn" id="display-link" href="/display">Display</a>
-        <a class="btn" id="admin-link" href="/admin">Admin</a>
-        <button type="button" id="sign-btn" class="btn">Sign in</button>
-        <button type="button" id="help-btn" class="btn help-btn" title="Help">?</button>
         <input id="import-file" type="file" accept="application/json,.json" hidden>
       </div>
-    </div>
-  </header>
-  <div id="clock-banner" class="banner" hidden></div>
-  <div id="notice" class="banner notice" hidden></div>
-  <main>
-    <section id="setup" class="card" hidden>
-      <form id="setup-form">
-        <div id="title-wrap">
-          <label for="title">Logbook title</label>
-          <input id="title" maxlength="200" autocomplete="off">
-          <p class="small">The title is set once and can never be changed.</p>
-        </div>
-        <label for="setup-user">Admin username</label>
-        <input id="setup-user" autocomplete="username" required>
+      <div id="search-box">
+        <label for="q">Search</label>
+        <input id="q" placeholder="Text">
         <div class="names">
-          <div>
-            <label for="setup-first">First name</label>
-            <input id="setup-first" autocomplete="given-name" required>
-          </div>
-          <div>
-            <label for="setup-last">Last name</label>
-            <input id="setup-last" autocomplete="family-name" required>
-          </div>
+          <div><label for="name-filter">Name</label><input id="name-filter"></div>
+          <div><label for="tag-filter">Tag</label><input id="tag-filter"></div>
         </div>
-        <label for="setup-pass">Password</label>
-        <input id="setup-pass" type="password" autocomplete="new-password" required>
+        <div class="names">
+          <div><label for="start">From</label><input id="start" placeholder="2026-01-01"></div>
+          <div><label for="end">To</label><input id="end" placeholder="2026-12-31"></div>
+        </div>
         <div class="form-row">
-          <button type="submit" class="btn btn-add">Create the logbook</button>
+          <label for="jump">Jump to entry #</label>
+          <input id="jump" inputmode="numeric">
+          <button type="button" id="search-btn" class="btn">Apply</button>
         </div>
-        <p class="small">The first account is the master admin. An entry cannot be edited or deleted, including by an admin.</p>
-      </form>
+      </div>
+      <div id="display-box">
+        <p class="small">What is shown</p>
+        <label class="check"><input type="checkbox" data-display="show_number" checked> Entry number</label>
+        <label class="check"><input type="checkbox" data-display="show_name" checked> Name</label>
+        <label class="check"><input type="checkbox" data-display="show_time" checked> Date and time</label>
+        <label class="check"><input type="checkbox" data-display="show_ip" checked> IP address</label>
+        <label class="check"><input type="checkbox" data-display="show_poster" checked> Account or Guest</label>
+        <label class="check"><input type="checkbox" data-display="show_tags" checked> Tags</label>
+        <label for="time-zone">Time zone</label>
+        <select id="time-zone" data-display="time_zone"><option value="local">Local time</option><option value="utc">UTC</option></select>
+        <label for="clock">Clock</label>
+        <select id="clock" data-display="clock"><option value="24">24-hour</option><option value="12">12-hour</option></select>
+        <label for="post-box">Post box position</label>
+        <select id="post-box" data-display="post_box">
+          <option value="top">Top</option>
+          <option value="bottom">Bottom</option>
+          <option value="left">Left</option>
+          <option value="right">Right</option>
+          <option value="center">Center</option>
+        </select>
+      </div>
     </section>
     <section id="log" class="layout pos-top" hidden>
       <div class="post-col">
@@ -81,12 +96,13 @@
           <textarea id="text" required></textarea>
           <div class="form-row">
             <button type="submit" class="btn btn-add" id="add-btn">Add</button>
-            <button type="button" class="btn" id="clear-correct">Clear correction</button>
+            <button type="button" class="btn" id="clear-correct" hidden>Clear correction</button>
             <span id="form-msg" class="msg"></span>
           </div>
           <p id="correcting" class="small" hidden></p>
         </form>
-        <article class="entry example" id="example">
+        <p class="example-toggle"><button type="button" id="show-example" class="text-btn">Show example</button></p>
+        <article class="entry example" id="example" hidden>
           <div class="top">
             <span class="num">#0102</span>
             <span class="when">4 Mar 2026, 09:15</span>
@@ -96,46 +112,6 @@
         </article>
       </div>
       <div class="entries-col">
-        <section id="tools" class="card">
-          <div id="search-box">
-            <label for="q">Search</label>
-            <input id="q" placeholder="Text">
-            <div class="names">
-              <div><label for="name-filter">Name</label><input id="name-filter"></div>
-              <div><label for="tag-filter">Tag</label><input id="tag-filter"></div>
-            </div>
-            <div class="names">
-              <div><label for="start">From</label><input id="start" placeholder="2026-01-01"></div>
-              <div><label for="end">To</label><input id="end" placeholder="2026-12-31"></div>
-            </div>
-            <div class="form-row">
-              <label for="jump">Jump to entry #</label>
-              <input id="jump" inputmode="numeric">
-              <button type="button" id="search-btn" class="btn">Apply</button>
-            </div>
-          </div>
-          <div id="display-box">
-            <p class="small">What is shown</p>
-            <label class="check"><input type="checkbox" data-display="show_number" checked> Entry number</label>
-            <label class="check"><input type="checkbox" data-display="show_name" checked> Name</label>
-            <label class="check"><input type="checkbox" data-display="show_time" checked> Date and time</label>
-            <label class="check"><input type="checkbox" data-display="show_ip" checked> IP address</label>
-            <label class="check"><input type="checkbox" data-display="show_poster" checked> Account or Guest</label>
-            <label class="check"><input type="checkbox" data-display="show_tags" checked> Tags</label>
-            <label for="time-zone">Time zone</label>
-            <select id="time-zone" data-display="time_zone"><option value="local">Local time</option><option value="utc">UTC</option></select>
-            <label for="clock">Clock</label>
-            <select id="clock" data-display="clock"><option value="24">24-hour</option><option value="12">12-hour</option></select>
-            <label for="post-box">Post box position</label>
-            <select id="post-box" data-display="post_box">
-              <option value="top">Top</option>
-              <option value="bottom">Bottom</option>
-              <option value="left">Left</option>
-              <option value="right">Right</option>
-              <option value="center">Center</option>
-            </select>
-          </div>
-        </section>
         <div id="entries"></div>
       </div>
     </section>
